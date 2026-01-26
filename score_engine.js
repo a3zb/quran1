@@ -71,6 +71,22 @@ const ScoreEngine = {
         return { points, newTotal };
     },
 
+    // دالة المتابعة الزمنية (لحل مشكلة الخطأ)
+    onListeningTick() {
+        // إضافة نقطة واحدة لكل دقيقة استماع
+        // Add 1 point directly to total score and listening score
+        const current = this.getScores();
+        const newListening = current.listening + 1;
+        const newTotal = current.total + 1;
+
+        localStorage.setItem(this.STORAGE_KEYS.LISTENING_SCORE, newListening);
+        localStorage.setItem(this.STORAGE_KEYS.TOTAL_SCORE, newTotal);
+
+        this.updateDailyStats('listening', 1);
+        this.updateStreak();
+        this.checkAchievements();
+    },
+
     // إضافة نقاط الأذكار
     addAdhkarScore(count = 1) {
         const points = count * this.POINTS.PER_DHIKR;

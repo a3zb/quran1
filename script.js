@@ -152,6 +152,9 @@ function navigateTo(pageId, options = {}) {
     const currentActivePage = document.querySelector('.page.active');
     const targetPage = document.getElementById(pageId);
 
+    // Toggle Reading Mode class for UI overrides
+    document.body.classList.toggle('reading-mode-active', pageId === 'readingPage');
+
     // If same page, just close sidebar
     if (currentActivePage === targetPage) {
         closeSidebar();
@@ -278,6 +281,8 @@ function showSyncPage() {
 }
 
 function showHomePage() {
+    const topNavBar = document.querySelector('.top-nav');
+    if (topNavBar) topNavBar.style.display = 'flex';
     navigateTo('homePage');
 }
 
@@ -297,6 +302,8 @@ function showReadingPageList() {
     renderReadingSurahList(songs); // 'songs' contains the surah data
 }
 
+
+
 // 2. Render List with Search
 function renderReadingSurahList(listToRender) {
     readingSurahListElement.innerHTML = '';
@@ -304,18 +311,19 @@ function renderReadingSurahList(listToRender) {
     // Sort by ID to ensure Quran order
     const sortedList = [...listToRender].sort((a, b) => Number(a.id) - Number(b.id));
 
-    sortedList.forEach(surah => {
+    sortedList.forEach((surah, index) => {
         const li = document.createElement('li');
-        li.className = 'surah-grid-card simple-glass'; // Clean class names
+        // listItem.setAttribute('data-id', surah.id); // Optional, good for debugging
 
         li.innerHTML = `
-            <div class="card-content">
-                <span class="card-num">${surah.id}</span>
-                <h3 class="card-title">${surah.title}</h3>
-                <span class="card-verses">${surah.lyrics ? surah.lyrics.length : 0} آية</span>
+            <img src="${surah.albumArtUrl || 'favicon.png'}" alt="${surah.title}" class="song-art-list">
+            <div class="song-info-list">
+                <h3>${surah.title}</h3>
+                <p>${surah.lyrics ? surah.lyrics.length : 0} آية</p>
             </div>
-            ${isLastRead(surah.id) ? '<div class="card-progress-bar"></div>' : ''}
+            ${isLastRead(surah.id) ? '<div class="card-progress-bar" style="bottom:0; width:100%; height:3px; background:#a855f7; position:absolute;"></div>' : ''}
         `;
+        li.style.animationDelay = `${index * 0.05}s`; // Add same animation
         li.onclick = () => openReadingSurah(surah);
         readingSurahListElement.appendChild(li);
     });
@@ -326,8 +334,21 @@ function isLastRead(surahId) {
     return saved.surahId == surahId;
 }
 
-// Search Logic for Reading Page
-if (readingSearchInput) {
+// Search Toggle & Logic for Reading Page
+const toggleReadingSearchBtn = document.getElementById('toggleReadingSearchBtn');
+if (toggleReadingSearchBtn && readingSearchInput) {
+    toggleReadingSearchBtn.onclick = () => {
+        const isHidden = readingSearchInput.style.display === 'none';
+        if (isHidden) {
+            readingSearchInput.style.display = 'block';
+            readingSearchInput.focus();
+        } else {
+            readingSearchInput.style.display = 'none';
+            readingSearchInput.value = '';
+            renderReadingSurahList(songs);
+        }
+    };
+
     readingSearchInput.addEventListener('input', (e) => {
         const term = e.target.value;
         const regex = buildArabicDiacriticInsensitiveRegex(term);
@@ -1873,8 +1894,8 @@ const nextSurahReading = document.getElementById('nextSurahReading');
 if (prevSurahReading) {
     prevSurahReading.addEventListener('click', () => {
         if (currentReadingIndex > 0) {
-            showReadingPage(currentReadingIndex - 1);
-            readingPage.scrollTo({ top: 0, behavior: 'smooth' });
+            openReadingSurah(songs[currentReadingIndex - 1]);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     });
 }
@@ -1900,8 +1921,8 @@ if (nextSurahReading) {
         }
 
         if (currentReadingIndex < songs.length - 1) {
-            showReadingPage(currentReadingIndex + 1);
-            readingPage.scrollTo({ top: 0, behavior: 'smooth' });
+            openReadingSurah(songs[currentReadingIndex + 1]);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     });
 }
@@ -3045,8 +3066,141 @@ function toggleImmersiveMode() {
     document.body.classList.toggle('immersive-mode');
 
     // Auto-hide side menu if open
-    const sideMenu = document.getElementById('sideMenu');
     if (sideMenu && sideMenu.classList.contains('active')) {
         sideMenu.classList.remove('active');
     }
+}
+
+// --- New Khatmah Buttons Logic ---
+
+function showKhatmahPlanModal() {
+    const savedPlan = localStorage.getItem('khatmahPlan');
+    if (savedPlan) {
+        const plan = JSON.parse(savedPlan);
+        const day = plan.currentDay || 1;
+        if (typeof showPointToast === 'function') {
+            showPointToast(0, `خطتك الحالية: اليوم ${day} من ${plan.days}`);
+        } else {
+            alert(`خطتك الحالية: اليوم ${day} من ${plan.days}`);
+        }
+    } else {
+        const days = prompt("كم يوماً تريد لختم القرآن؟", "30");
+        if (days && !isNaN(days)) {
+            const plan = {
+                days: parseInt(days),
+                startDate: Date.now(),
+                currentDay: 1,
+                dailyTarget: Math.ceil(604 / parseInt(days))
+            };
+            localStorage.setItem('khatmahPlan', JSON.stringify(plan));
+            if (typeof showPointToast === 'function') {
+                showPointToast(0, "تم إنشاء خطة الختمة! سيتم متابعة تقدمك.");
+            } else {
+                alert("تم إنشاء خطة الختمة!");
+            }
+        }
+    }
+}
+
+function resumeReading() {
+    const saved = JSON.parse(localStorage.getItem('lastReadProgress') || 'null');
+    if (saved && saved.surahId) {
+        const surah = songs.find(s => s.id == saved.surahId);
+        if (surah) {
+            openReadingSurah(surah);
+        }
+    } else {
+        if (typeof showPointToast === 'function') {
+            showPointToast(0, "لم تقرأ شيئاً بعد للمتابعة");
+        } else {
+            alert("لا يوجد تقدم محفوظ للمتابعة");
+        }
+    }
+}
+
+function toggleFullScreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+            console.log(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+        });
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+    }
+}
+
+// --- Points & Rewards System (Fixing ReferenceErrors) ---
+
+/**
+ * Main function to award points to the user
+ * @param {number} points - Number of points to add
+ * @param {string} reason - The action description
+ */
+function awardPoints(points, reason) {
+    if (!points || points <= 0 || isNaN(points)) return;
+
+    console.log(`Awarding ${points} points for: ${reason}`);
+
+    // Update ScoreEngine if it exists
+    if (window.ScoreEngine && window.ScoreEngine.STORAGE_KEYS) {
+        const currentTotal = parseInt(localStorage.getItem(window.ScoreEngine.STORAGE_KEYS.TOTAL_SCORE) || '0');
+        localStorage.setItem(window.ScoreEngine.STORAGE_KEYS.TOTAL_SCORE, currentTotal + points);
+
+        // Update daily stats through engine
+        if (typeof window.ScoreEngine.updateDailyStats === 'function') {
+            window.ScoreEngine.updateDailyStats('reading', points); // Default to reading or handle type
+        }
+    } else {
+        // Fallback to simple key
+        const simpleTotal = parseInt(localStorage.getItem('user_total_points') || '0');
+        localStorage.setItem('user_total_points', simpleTotal + points);
+    }
+
+    // Show visual notification
+    showPointToast(points, reason);
+}
+
+/**
+ * Shows a beautiful toast notification for points or messages
+ */
+function showPointToast(points, reason) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'point-toast';
+
+    let content = '';
+    if (points > 0) {
+        content = `<div class="toast-icon">✨</div>
+                   <div class="toast-body">
+                       <span class="toast-points">+${points}</span>
+                       <span class="toast-reason">${reason}</span>
+                   </div>`;
+    } else {
+        content = `<div class="toast-body">
+                       <span class="toast-reason">${reason}</span>
+                   </div>`;
+    }
+
+    toast.innerHTML = content;
+    container.appendChild(toast);
+
+    // Animate in
+    requestAnimationFrame(() => {
+        toast.style.transform = 'translateX(0)';
+        toast.style.opacity = '1';
+    });
+
+    // Auto remove
+    setTimeout(() => {
+        toast.style.transform = 'translateX(120%)';
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 500);
+    }, 4000);
 }

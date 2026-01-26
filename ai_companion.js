@@ -1,235 +1,177 @@
 // ===================================
-// الخادم الذكي (Smart AI Companion)
+// الخادم الذكي (Smart AI Companion) - نسخة 2.0 (المساعد المحبب)
 // ===================================
-// نظام ذكي يحلل الوقت ونشاط المستخدم لتقديم اقتراحات مخصصة
 
 window.SmartCompanion = {
-    // تهيئة النظام
-    init() {
-        console.log('🤖 Smart Companion Initialized');
-
-        // تأخير بسيط لعدم إزعاج المستخدم فور فتح الموقع
-        setTimeout(() => {
-            this.checkAndSuggest();
-        }, 5000);
-
-        // فحص دوري كل 30 دقيقة
-        setInterval(() => {
-            this.checkAndSuggest();
-        }, 30 * 60 * 1000);
+    // إعدادات
+    CONFIG: {
+        INITIAL_DELAY: 3000,
+        COOLDOWN_MS: 2 * 60 * 60 * 1000, // كل ساعتين كما طُلِب
+        AUTO_HIDE_MS: 30000
     },
 
-    // فحص الوقت والنشاط وتقديم الاقتراح المناسب
+    // قائمة أحاديث منتقاة (بخاري ومسلم فقط - قصيرة للمعاينة الجميلة)
+    SAHIH_HADITHS: [
+        { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «مَنْ سَلَكَ طَرِيقًا يَلْتَمِسُ فِيهِ عِلْمًا، سَهَّلَ اللَّهُ لَهُ بِهِ طَرِيقًا إِلَى الْجَنَّةِ»", ref: "صحيح مسلم" },
+        { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «كَلِمَتَانِ خَفِيفَتَانِ عَلَى اللِّسَانِ، ثَقِيلَتَانِ فِي الْمِيزَانِ، حَبِيبَتَانِ إِلَى الرَّحْمَنِ: سُبْحَانَ اللَّهِ وَبِحَمْدِهِ، سُبْحَانَ اللَّهِ الْعَظِيمِ»", ref: "صحيح البخاري" },
+        { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «مَنْ قَرَأَ حَرْفًا مِنْ كِتَابِ اللَّهِ فَلَهُ بِهِ حَسَنَةٌ، وَالْحَسَنَةُ بِعَشْرِ أَمْثَالِهَا»", ref: "صحيح البخاري" },
+        { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «الدُّعَاءُ هُوَ الْعِبَادَةُ»", ref: "صحيح البخاري ومسلم" },
+        { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «خَيْرُكُمْ مَنْ تَعَلَّمَ الْقُرْآنَ وَعَلَّمَهُ»", ref: "صحيح البخاري" },
+        { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «لَا يُؤْمِنُ أَحَدُكُمْ حَتَّى يُحِبَّ لِأَخِيهِ مَا يُحِبُّ لِنَفْسِهِ»", ref: "صحيح البخاري ومسلم" },
+        { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «مَنْ كَانَ يُؤْمِنُ بِاللَّهِ وَالْيَوْمِ الْآخِرِ فَلْيَقُلْ خَيْرًا أَوْ لِيَصْمُطْ»", ref: "صحيح البخاري ومسلم" },
+        { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ»", ref: "صحيح البخاري ومسلم" }
+    ],
+
+    // أدعية قصيرة ومؤثرة
+    RANDOM_DUAS: [
+        "اللهم إنك عفو تحب العفو فاعف عني.",
+        "اللهم اهدني وسددني، وتوفني وأنت راضٍ عني.",
+        "يا مقلب القلوب ثبت قلبي على دينك.",
+        "اللهم ارزقني حبك وحب من يحبك وحب كل عمل يقربني إلى حبك.",
+        "ربنا آتنا في الدنيا حسنة وفي الآخرة حسنة وقنا عذاب النار.",
+        "اللهم اكفني بحلالك عن حرامك وأغنني بفضلك عمن سواك."
+    ],
+
+    init() {
+        console.log('🤖 Smart Companion 2.0 (Wonderful Edition) Ready');
+
+        setTimeout(() => this.checkAndSuggest(), this.CONFIG.INITIAL_DELAY);
+
+        // فحص دوري كل 30 دقيقة (لمعرفة الوقت المناسب)
+        setInterval(() => this.checkAndSuggest(), 30 * 60 * 1000);
+    },
+
     checkAndSuggest() {
         const now = new Date();
         const hour = now.getHours();
-        const day = now.getDay(); // 0 = الأحد, 5 = الجمعة
+        const day = now.getDay();
 
         let suggestion = null;
 
-        // === اقتراحات بناءً على الوقت ===
-
-        // 1. يوم الجمعة وسورة الكهف
-        if (day === 5 && !this.hasReadToday(18)) {
+        // 1. الأولوية للمناسبات الزمنية (صيام، جمعة، قيام)
+        if ((day === 0 || day === 3) && hour >= 18) {
             suggestion = {
-                icon: '🕌',
-                title: 'طابت جمعتك!',
-                text: 'لا تنس نور ما بين الجمعتين. هل قرأت سورة الكهف اليوم؟',
-                action: 'اقرأها الآن',
-                actionFn: () => this.openSurah(18)
+                icon: '🌙', title: 'مبادرة مباركة',
+                text: day === 0 ? 'غداً يوم الاثنين، يوم ترفع فيه الأعمال. هل تنوي الصيام؟' : 'غداً يوم الخميس، سنة مهجورة. ذكّر نفسك بالصيام.',
+                action: 'نويت الصيام', type: 'fard',
+                actionFn: () => this.showFeedback('تقبل الله منك يا غالي! 🤲 تم تسجيل همتك في ميزان حسناتك.')
             };
-        }
-        // 2. أذكار الصباح (5 صباحاً - 11 صباحاً)
-        else if (hour >= 5 && hour < 11 && !this.hasDoneAdhkarToday('morning')) {
+        } else if (day === 5 && !this.hasReadToday(18)) {
             suggestion = {
-                icon: '☀️',
-                title: 'صباح الخير',
-                text: 'بداية يوم مباركة بذكر الله. هل قلت أذكار الصباح؟',
-                action: 'الذهاب للأذكار',
-                actionFn: () => navigateTo('adhkarPage')
+                icon: '🕌', title: 'نور الجمعة', text: 'طابت جمعتك! هل قرأت سورة الكهف لتنير لك ما بين الجمعتين؟',
+                action: 'اقرأها الآن', actionFn: () => this.openSurah(18)
             };
-        }
-        // 3. أذكار المساء (3 عصراً - 9 مساءً)
-        else if (hour >= 15 && hour < 21 && !this.hasDoneAdhkarToday('evening')) {
+        } else if (hour >= 23 || hour < 4) {
             suggestion = {
-                icon: '🌙',
-                title: 'مساء الخير',
-                text: 'هدوء النفس في ذكر الله. حان وقت أذكار المساء.',
-                action: 'الذهاب للأذكار',
-                actionFn: () => navigateTo('adhkarPage')
-            };
-        }
-        // 4. قيام الليل (11 مساءً - 4 فجراً)
-        else if (hour >= 23 || hour < 4) {
-            suggestion = {
-                icon: '🏹',
-                title: 'سهام الليل',
-                text: 'الناس نيام والله يستجيب الدعاء. هل لك في ركعتين وقراءة قصيرة؟',
-                action: 'اقرأ القرآن',
-                actionFn: () => navigateTo('readingPage')
-            };
-        }
-        // 5. وقت الضحى (9 صباحاً - 12 ظهراً)
-        else if (hour >= 9 && hour < 12) {
-            suggestion = {
-                icon: '📖',
-                title: 'وقت مبارك',
-                text: 'وقت الضحى من أفضل أوقات القراءة. ما رأيك في صفحة من كتاب الله؟',
-                action: 'ابدأ القراءة',
-                actionFn: () => navigateTo('readingPage')
+                icon: '🏹', title: 'سهام الليل', text: 'الناس نيام والله ينزل للسماء الدنيا. هل لك في ركعتين وقراءة قصيرة؟',
+                action: 'قراءة القرآن', actionFn: () => { navigateTo('readingPage'); this.showFeedback('أبشر! تقبل الله طاعتك'); }
             };
         }
 
-        // === اقتراحات بناءً على النشاط ===
+        // 2. إذا لم يوجد موعد زمني، نعطيه "فائدة عشوائية" (حديث أو دعاء)
         if (!suggestion) {
-            const scores = window.ScoreEngine ? window.ScoreEngine.getScores() : null;
-            const streak = window.ScoreEngine ? window.ScoreEngine.getStreak() : 0;
+            const lastBenefit = sessionStorage.getItem('ai_last_benefit_type');
+            const isHadith = Math.random() > 0.5; // اختيار عشوائي بين حديث ودعاء
 
-            // تحذير من انقطاع الستريك
-            if (streak >= 3 && !this.hasActivityToday()) {
+            if (isHadith) {
+                const hadith = this.SAHIH_HADITHS[Math.floor(Math.random() * this.SAHIH_HADITHS.length)];
                 suggestion = {
-                    icon: '🔥',
-                    title: 'لا تقطع سلسلتك!',
-                    text: `لديك ${streak} أيام متتالية من النشاط. حافظ عليها بأي نشاط اليوم!`,
-                    action: 'ابدأ الآن',
-                    actionFn: () => navigateTo('readingPage')
+                    icon: '📜', title: 'درر من السنة',
+                    text: `${hadith.text} <br><small style="color:var(--accent-color)">[${hadith.ref}]</small>`,
+                    action: 'جزاك الله خيراً', actionFn: () => this.awardPointsForReading()
                 };
-            }
-            // تشجيع المبتدئين
-            else if (scores && scores.total < 100) {
+            } else {
+                const dua = this.RANDOM_DUAS[Math.floor(Math.random() * this.RANDOM_DUAS.length)];
                 suggestion = {
-                    icon: '🌱',
-                    title: 'بداية موفقة!',
-                    text: 'أكمل قراءة صفحة واحدة فقط لتحصل على 10 نقاط!',
-                    action: 'اقرأ الآن',
-                    actionFn: () => navigateTo('readingPage')
-                };
-            }
-            // تحفيز المتقدمين
-            else if (scores && scores.reading > scores.listening && scores.listening < 50) {
-                suggestion = {
-                    icon: '🎧',
-                    title: 'نوّع عبادتك',
-                    text: 'أنت متفوق في القراءة! ماذا عن الاستماع لتلاوة خاشعة؟',
-                    action: 'استمع الآن',
-                    actionFn: () => navigateTo('homePage')
+                    icon: '✨', title: 'دعاء مستجاب',
+                    text: dua, action: 'آمين يا رب',
+                    actionFn: () => this.showFeedback('رزقك الله استجابة الدعاء وسعة الرزق.')
                 };
             }
         }
 
-        // عرض الاقتراح إذا وجد
-        if (suggestion) {
-            this.showNotification(suggestion);
-        }
+        if (suggestion) this.showNotification(suggestion);
     },
 
-    // عرض الإشعار
     showNotification(data) {
-        // التحقق من عدم تكرار العرض في نفس الساعة
         const lastShown = sessionStorage.getItem('ai_last_shown');
         const now = Date.now();
-        if (lastShown && (now - parseInt(lastShown)) < 3600000) return; // ساعة واحدة
+
+        // Cooldown: ساعتان كما طُلِب
+        if (lastShown && (now - parseInt(lastShown)) < this.CONFIG.COOLDOWN_MS) {
+            console.log('AI in cooldown...');
+            return;
+        }
 
         let container = document.getElementById('ai-notification-container');
-
-        // إنشاء الحاوية إذا لم تكن موجودة
         if (!container) {
             container = document.createElement('div');
             container.id = 'ai-notification-container';
             document.body.appendChild(container);
         }
 
+        // تصميم أنيق مع دعم HTML للحديث
         container.innerHTML = `
             <div class="ai-card glass-card">
                 <div class="ai-icon">${data.icon}</div>
                 <div class="ai-content">
                     <h4>${data.title}</h4>
-                    <p>${data.text}</p>
-                    <button class="ai-action-btn" id="aiActionBtn">${data.action}</button>
+                    <div class="ai-text-body" style="font-size:0.95rem; line-height:1.6; margin-bottom:12px;">${data.text}</div>
+                    <button class="ai-action-btn" onclick="window.SmartCompanion.handleAction()">${data.action}</button>
                 </div>
-                <div class="ai-close" id="aiCloseBtn">×</div>
+                <div class="ai-close" onclick="window.SmartCompanion.dismiss()" title="إغلاق">×</div>
             </div>
         `;
 
-        // ربط الأحداث
-        setTimeout(() => {
-            const actionBtn = document.getElementById('aiActionBtn');
-            const closeBtn = document.getElementById('aiCloseBtn');
-
-            if (actionBtn) {
-                actionBtn.onclick = () => {
-                    data.actionFn();
-                    this.dismiss();
-                };
-            }
-
-            if (closeBtn) {
-                closeBtn.onclick = () => this.dismiss();
-            }
-        }, 100);
-
+        this.currentAction = data.actionFn;
         container.classList.add('visible');
         sessionStorage.setItem('ai_last_shown', now.toString());
 
-        // إخفاء تلقائي بعد 15 ثانية
-        setTimeout(() => {
-            if (container.classList.contains('visible')) {
-                this.dismiss();
-            }
-        }, 15000);
+        setTimeout(() => { if (container.classList.contains('visible')) this.dismiss(); }, this.CONFIG.AUTO_HIDE_MS);
     },
 
-    // إخفاء الإشعار
+    handleAction() {
+        if (this.currentAction) this.currentAction();
+        this.dismiss();
+    },
+
     dismiss() {
         const container = document.getElementById('ai-notification-container');
-        if (container) {
-            container.classList.remove('visible');
-        }
+        if (container) container.classList.remove('visible');
     },
 
-    // === دوال مساعدة ===
+    showFeedback(message) {
+        if (typeof showPointToast === 'function') showPointToast(0, message);
+        else alert(message);
+    },
 
-    // فحص إذا قرأ السورة اليوم
+    awardPointsForReading() {
+        if (typeof awardPoints === 'function') awardPoints(5, 'التفاعل مع السنة النبوية');
+        this.showFeedback('زادك الله علماً وإيماناً! ✨');
+    },
+
+    // Helpers
     hasReadToday(surahId) {
         const saved = JSON.parse(localStorage.getItem('lastReadProgress') || '{}');
         if (saved.surahId == surahId) {
-            const today = new Date().toDateString();
-            const savedDate = new Date(saved.timestamp).toDateString();
-            return today === savedDate;
+            return new Date().toDateString() === new Date(saved.timestamp).toDateString();
         }
         return false;
     },
 
-    // فحص إذا أتم الأذكار اليوم
-    hasDoneAdhkarToday(type) {
-        const key = `adhkar_${type}_${new Date().toDateString()}`;
-        return localStorage.getItem(key) === 'done';
-    },
-
-    // فحص إذا كان هناك أي نشاط اليوم
-    hasActivityToday() {
-        const today = new Date().toDateString();
-        const lastActivity = localStorage.getItem('last_activity_date');
-        return lastActivity === today;
-    },
-
-    // فتح سورة معينة
     openSurah(surahId) {
-        const surah = songs.find(s => s.id == surahId);
+        const surah = window.songs ? window.songs.find(s => s.id == surahId) : null;
         if (surah && typeof openReadingSurah === 'function') {
             navigateTo('readingPage');
-            setTimeout(() => {
-                openReadingSurah(surah);
-            }, 500);
+            setTimeout(() => openReadingSurah(surah), 500);
         }
     }
 };
 
-// تشغيل الخادم الذكي تلقائياً
+// تشغيل
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        window.SmartCompanion.init();
-    });
+    document.addEventListener('DOMContentLoaded', () => window.SmartCompanion.init());
 } else {
     window.SmartCompanion.init();
 }
+
