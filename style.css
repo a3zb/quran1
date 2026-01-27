@@ -6944,41 +6944,117 @@ body {
     pointer-events: none;
 }
 
-.point-toast {
-    background: rgba(15, 23, 42, 0.9);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(168, 85, 247, 0.4);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    border-radius: 12px;
-    padding: 12px 20px;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    min-width: 250px;
-    opacity: 0;
-    transform: translateX(120%);
-    transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.4s ease;
-}
-
-.toast-icon {
-    font-size: 1.5rem;
-}
-
-.toast-body {
+/* --- AI Companion Styling --- */
+#ai-notification-container {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    /* Or right depending on RTL preference, let's stick to left for non-interference */
+    z-index: 999999;
+    width: 320px;
+    max-width: 90vw;
+    pointer-events: none;
+    /* Allow clicking through when hidden */
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    justify-content: flex-end;
+    gap: 10px;
 }
 
-.toast-points {
-    color: #a855f7;
-    font-weight: bold;
+#ai-notification-container .ai-card {
+    background: rgba(30, 10, 50, 0.85);
+    /* Deep purple glass */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    padding: 16px;
+    color: #fff;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 15px;
+    position: relative;
+    pointer-events: auto;
+
+    /* Animation State: Hidden */
+    opacity: 0;
+    transform: translateY(100px) scale(0.95);
+    transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+#ai-notification-container.visible .ai-card {
+    /* Animation State: Visible */
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.ai-icon {
+    font-size: 2rem;
+    filter: drop-shadow(0 0 10px rgba(168, 85, 247, 0.5));
+}
+
+.ai-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ai-content h4 {
+    margin: 0;
     font-size: 1.1rem;
-    text-shadow: 0 0 10px rgba(168, 85, 247, 0.3);
+    color: #e9d5ff;
+    /* Light purple */
 }
 
-.toast-reason {
+.ai-content p,
+.ai-text-body {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: #d1d5db;
+}
+
+.ai-action-btn {
+    align-self: flex-start;
+    margin-top: 8px;
+    background: linear-gradient(135deg, #7c3aed, #4c1d95);
+    border: none;
+    color: white;
+    padding: 6px 14px;
+    border-radius: 20px;
     font-size: 0.85rem;
-    opacity: 0.85;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 4px 10px rgba(124, 58, 237, 0.3);
+}
+
+.ai-action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(124, 58, 237, 0.5);
+}
+
+.ai-close {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    /* For RTL */
+    font-size: 1.2rem;
+    cursor: pointer;
+    opacity: 0.6;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    transition: all 0.2s;
+}
+
+.ai-close:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.2);
 }

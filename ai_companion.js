@@ -1,16 +1,20 @@
 // ===================================
-// الخادم الذكي (Smart AI Companion) - نسخة 2.0 (المساعد المحبب)
+// الخادم الذكي (Smart AI Companion) - نسخة 2.3 (المساعد المنضبط)
 // ===================================
 
 window.SmartCompanion = {
     // إعدادات
     CONFIG: {
-        INITIAL_DELAY: 3000,
-        COOLDOWN_MS: 2 * 60 * 60 * 1000, // كل ساعتين كما طُلِب
-        AUTO_HIDE_MS: 30000
+        INITIAL_DELAY: 5000,
+        APPEARANCE_INTERVAL: 2 * 60 * 60 * 1000, // يظهر كل ساعتين
+        MIN_VISIBLE_TIME: 60000,                // دقيقة (60,000 ملي ثانية)
+        MAX_VISIBLE_TIME: 120000                // دقيقتان (120,000 ملي ثانية)
     },
 
-    // قائمة أحاديث منتقاة (بخاري ومسلم فقط - قصيرة للمعاينة الجميلة)
+    // مؤقت الإخفاء
+    hideTimer: null,
+
+    // قائمة أحاديث منتقاة (بخاري ومسلم فقط)
     SAHIH_HADITHS: [
         { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «مَنْ سَلَكَ طَرِيقًا يَلْتَمِسُ فِيهِ عِلْمًا، سَهَّلَ اللَّهُ لَهُ بِهِ طَرِيقًا إِلَى الْجَنَّةِ»", ref: "صحيح مسلم" },
         { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «كَلِمَتَانِ خَفِيفَتَانِ عَلَى اللِّسَانِ، ثَقِيلَتَانِ فِي الْمِيزَانِ، حَبِيبَتَانِ إِلَى الرَّحْمَنِ: سُبْحَانَ اللَّهِ وَبِحَمْدِهِ، سُبْحَانَ اللَّهِ الْعَظِيمِ»", ref: "صحيح البخاري" },
@@ -33,15 +37,38 @@ window.SmartCompanion = {
     ],
 
     init() {
-        console.log('🤖 Smart Companion 2.0 (Wonderful Edition) Ready');
+        console.log('🤖 Smart Companion 2.3 Ready (Fixed Timing)');
 
+        this.setupSettingsToggle();
+
+        // التذكير الأول بعد 5 ثوانٍ من فتح الموقع
         setTimeout(() => this.checkAndSuggest(), this.CONFIG.INITIAL_DELAY);
 
-        // فحص دوري كل 30 دقيقة (لمعرفة الوقت المناسب)
-        setInterval(() => this.checkAndSuggest(), 30 * 60 * 1000);
+        // جدولة التذكيرات القادمة كل ساعتين
+        setInterval(() => this.checkAndSuggest(), this.CONFIG.APPEARANCE_INTERVAL);
+    },
+
+    setupSettingsToggle() {
+        const toggle = document.getElementById('aiCompanionToggle');
+        if (toggle) {
+            // تحميل الحالة المحفوظة
+            const savedState = localStorage.getItem('ai_companion_enabled');
+            if (savedState !== null) {
+                toggle.checked = savedState === 'true';
+            }
+
+            toggle.addEventListener('change', () => {
+                localStorage.setItem('ai_companion_enabled', toggle.checked);
+                if (!toggle.checked) this.dismiss();
+            });
+        }
     },
 
     checkAndSuggest() {
+        // التحقق إذا كان المستخدم قد عطّل المساعد
+        const enabled = localStorage.getItem('ai_companion_enabled') !== 'false';
+        if (!enabled) return;
+
         const now = new Date();
         const hour = now.getHours();
         const day = now.getDay();
@@ -52,25 +79,24 @@ window.SmartCompanion = {
         if ((day === 0 || day === 3) && hour >= 18) {
             suggestion = {
                 icon: '🌙', title: 'مبادرة مباركة',
-                text: day === 0 ? 'غداً يوم الاثنين، يوم ترفع فيه الأعمال. هل تنوي الصيام؟' : 'غداً يوم الخميس، سنة مهجورة. ذكّر نفسك بالصيام.',
+                text: day === 0 ? 'غداً يوم الاثنين.. هل تنوي الصيام؟' : 'غداً يوم الخميس.. ذكّر نفسك بالصيام.',
                 action: 'نويت الصيام', type: 'fard',
-                actionFn: () => this.showFeedback('تقبل الله منك يا غالي! 🤲 تم تسجيل همتك في ميزان حسناتك.')
+                actionFn: () => this.showFeedback('تقبل الله منك! 🤲')
             };
         } else if (day === 5 && !this.hasReadToday(18)) {
             suggestion = {
-                icon: '🕌', title: 'نور الجمعة', text: 'طابت جمعتك! هل قرأت سورة الكهف لتنير لك ما بين الجمعتين؟',
+                icon: '🕌', title: 'نور الجمعة', text: 'طابت جمعتك! هل قرأت سورة الكهف?',
                 action: 'اقرأها الآن', actionFn: () => this.openSurah(18)
             };
         } else if (hour >= 23 || hour < 4) {
             suggestion = {
-                icon: '🏹', title: 'سهام الليل', text: 'الناس نيام والله ينزل للسماء الدنيا. هل لك في ركعتين وقراءة قصيرة؟',
+                icon: '🏹', title: 'سهام الليل', text: 'هل لك في ركعتين وقراءة قصيرة?',
                 action: 'قراءة القرآن', actionFn: () => { navigateTo('readingPage'); this.showFeedback('أبشر! تقبل الله طاعتك'); }
             };
         }
 
         // 2. إذا لم يوجد موعد زمني، نعطيه "فائدة عشوائية" (حديث أو دعاء)
         if (!suggestion) {
-            const lastBenefit = sessionStorage.getItem('ai_last_benefit_type');
             const isHadith = Math.random() > 0.5; // اختيار عشوائي بين حديث ودعاء
 
             if (isHadith) {
@@ -85,7 +111,7 @@ window.SmartCompanion = {
                 suggestion = {
                     icon: '✨', title: 'دعاء مستجاب',
                     text: dua, action: 'آمين يا رب',
-                    actionFn: () => this.showFeedback('رزقك الله استجابة الدعاء وسعة الرزق.')
+                    actionFn: () => this.showFeedback('رزقك الله الإجابة.')
                 };
             }
         }
@@ -94,14 +120,9 @@ window.SmartCompanion = {
     },
 
     showNotification(data) {
-        const lastShown = sessionStorage.getItem('ai_last_shown');
-        const now = Date.now();
-
-        // Cooldown: ساعتان كما طُلِب
-        if (lastShown && (now - parseInt(lastShown)) < this.CONFIG.COOLDOWN_MS) {
-            console.log('AI in cooldown...');
-            return;
-        }
+        // منع التكرار إذا كان ظاهراً
+        const existing = document.querySelector('.ai-card.visible');
+        if (existing) return;
 
         let container = document.getElementById('ai-notification-container');
         if (!container) {
@@ -125,9 +146,23 @@ window.SmartCompanion = {
 
         this.currentAction = data.actionFn;
         container.classList.add('visible');
-        sessionStorage.setItem('ai_last_shown', now.toString());
 
-        setTimeout(() => { if (container.classList.contains('visible')) this.dismiss(); }, this.CONFIG.AUTO_HIDE_MS);
+        // حساب الوقت الآمن (fallback if config missing)
+        let minTime = this.CONFIG ? this.CONFIG.MIN_VISIBLE_TIME : 60000;
+        let maxTime = this.CONFIG ? this.CONFIG.MAX_VISIBLE_TIME : 120000;
+
+        const visibleTime = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
+
+        console.log(`🤖 AI Notification shown. Will dismiss in ${(visibleTime / 1000).toFixed(1)} seconds.`);
+
+        // إلغاء أي مؤقت سابق
+        if (this.hideTimer) clearTimeout(this.hideTimer);
+
+        // ضبط المؤقت الجديد
+        this.hideTimer = setTimeout(() => {
+            console.log('🤖 Auto-dismissing notification now.');
+            this.dismiss();
+        }, visibleTime);
     },
 
     handleAction() {
@@ -138,6 +173,7 @@ window.SmartCompanion = {
     dismiss() {
         const container = document.getElementById('ai-notification-container');
         if (container) container.classList.remove('visible');
+        if (this.hideTimer) clearTimeout(this.hideTimer);
     },
 
     showFeedback(message) {

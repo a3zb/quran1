@@ -1425,7 +1425,7 @@ playerPlayPauseBtn.addEventListener('click', () => {
     if (isPlaying) {
         pauseTrack();
     } else {
-        playTrack();
+        // function placeholder
     }
 });
 playerPrevBtn.addEventListener('click', prevTrack);
@@ -1638,6 +1638,12 @@ if (sleepTimerBtn && sleepTimerPopover) {
 
 // Auto-advance when a surah ends (respecting repeat/shuffle modes)
 audioPlayer.addEventListener('ended', () => {
+    // If in Single Verse Mode (e.g. Daily Verse), do NOT auto-advance
+    if (window.singleVerseMode) {
+        window.singleVerseMode = false; // Reset mode
+        return;
+    }
+
     if (repeatMode === 1) {
         // Repeat-one handled via audio.loop = true
         return;
@@ -2446,6 +2452,7 @@ function init() {
     setTimeout(checkResumePlayback, 1000);
 
     // Initialize Daily Verse & Adhkar
+    // Initialize Daily Verse & Adhkar
     initDailyVerse();
     setupAdhkarFeature();
 
@@ -2455,11 +2462,164 @@ function init() {
 
 // --- Adhkar System Logic ---
 
+function initDailyVerse() {
+    if (allVersesFlat.length === 0) flattenVerses();
+    if (allVersesFlat.length === 0) return;
 
+    // Pick a daily verse based on date hash
+    const today = new Date().toDateString();
+    let seed = 0;
+    for (let i = 0; i < today.length; i++) seed += today.charCodeAt(i);
+    const idx = seed % allVersesFlat.length;
+    const verse = allVersesFlat[idx];
 
+    const textEl = document.getElementById('dailyVerseText');
+    const refEl = document.getElementById('dailyVerseReference');
+    const container = document.getElementById('dailyVerseCard');
+
+    if (textEl && verse) {
+        textEl.textContent = verse.text;
+        if (refEl) refEl.textContent = `${verse.surahTitle} - آية ${verse.verseIndex + 1}`;
+
+        // Link to reading (Card Click)
+        if (container) {
+            container.onclick = () => {
+                showReadingPageList();
+                setTimeout(() => {
+                    openReadingSurah(songs[verse.surahIndex]);
+                    setTimeout(() => {
+                        const vEl = document.querySelector(`.verse-item[data-verse="${verse.verseIndex + 1}"]`);
+                        if (vEl) {
+                            vEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            vEl.classList.add('marked-read');
+                        }
+                    }, 500);
+                }, 100);
+            };
+        }
+
+        // Daily Verse Actions
+        const playBtn = document.getElementById('playDailyVerseBtn');
+        const tafsirBtn = document.getElementById('tafsirDailyVerseBtn');
+        const copyBtn = document.getElementById('copyDailyVerseBtn');
+
+        if (playBtn) {
+            playBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                playSingleVerse(verse.surahIndex, verse.verseIndex);
+            };
+        }
+
+        if (tafsirBtn) {
+            tafsirBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openTafsir(songs[verse.surahIndex].id, verse.verseIndex + 1);
+            };
+        }
+
+        if (copyBtn) {
+            copyBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const copyText = `${verse.text}\n[${verse.surahTitle}: ${verse.verseIndex + 1}]`;
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(copyText).then(() => alert("تم نسخ الآية"));
+                } else {
+                    alert("النسخ غير مدعوم في هذا المتصفح");
+                }
+            };
+        }
+    }
+}
+
+function playSingleVerse(surahIdx, verseIdx) {
+    const song = songs[surahIdx];
+    if (!song || !song.lyrics) return;
+
+    currentSongIndex = surahIdx;
+    loadSong(song);
+
+    const start = parseFloat(song.lyrics[verseIdx].time);
+    const nextLyric = song.lyrics[verseIdx + 1];
+    const end = nextLyric ? parseFloat(nextLyric.time) : audioPlayer.duration || 999999;
+
+    audioPlayer.currentTime = start;
+    window.singleVerseMode = true; // Use global flag to prevent auto-next on 'ended'
+    audioPlayer.loop = false; // Ensure native looping is OFF
+    playTrack();
+    showPlayerPage();
+
+    // Auto-stop logic (Single Verse Mode)
+    if (window.verseEndListener) {
+        audioPlayer.removeEventListener('timeupdate', window.verseEndListener);
+    }
+
+    window.verseEndListener = () => {
+        // Stop if we reached the start of the next verse
+        // Use a small buffer (0.5s) to ensure we don't accidentally hit the end if it's the last verse
+        if (audioPlayer.currentTime >= end || (audioPlayer.duration > 0 && audioPlayer.currentTime >= audioPlayer.duration - 0.5)) {
+            audioPlayer.pause();
+            if (audioPlayer.currentTime >= audioPlayer.duration - 0.5) {
+                // If we are near the end, forcing pause might still trigger 'ended' in some browsers
+                // preventing default behavior via the flag is key.
+            }
+            audioPlayer.removeEventListener('timeupdate', window.verseEndListener);
+            window.verseEndListener = null;
+            // Optionally, reset to start of verse so they can play again?
+            // audioPlayer.currentTime = start; 
+        }
+    };
+
+    audioPlayer.addEventListener('timeupdate', window.verseEndListener);
+}
+
+function renderAdhkarCategories() {
+    const container = document.getElementById('adhkarCategories');
+    if (!container) return;
+
+    // Wait for data load
+    if (Object.keys(adhkarData).length === 0) {
+        setTimeout(renderAdhkarCategories, 500);
+        return;
+    }
+
+    container.innerHTML = '';
+
+    // 1. Tasbeeh Item (Manual)
+    const tasbeehDiv = document.createElement('div');
+    tasbeehDiv.className = 'dhikr-category-card';
+    tasbeehDiv.innerHTML = `
+        <div class="cat-icon"><i class="fas fa-fingerprint"></i></div>
+        <h3>السبحة الإلكترونية</h3>
+    `;
+    tasbeehDiv.onclick = () => openAdhkarCategory('tasbeeh');
+    container.appendChild(tasbeehDiv);
+
+    // 2. Dynamic Categories from JSON
+    Object.keys(adhkarData).forEach(key => {
+        const div = document.createElement('div');
+        div.className = 'dhikr-category-card';
+
+        let icon = 'fa-hands-praying';
+        if (key.includes('صباح')) icon = 'fa-sun';
+        else if (key.includes('مساء')) icon = 'fa-moon';
+        else if (key.includes('نوم')) icon = 'fa-bed';
+        else if (key.includes('مسجد')) icon = 'fa-mosque';
+
+        div.innerHTML = `
+            <div class="cat-icon"><i class="fas ${icon}"></i></div>
+            <h3>${key}</h3>
+        `;
+        div.onclick = () => openAdhkarCategory(key);
+        container.appendChild(div);
+    });
+}
 let tasbeehCount = 0;
 
 function setupAdhkarFeature() {
+    renderAdhkarCategories();
     const navAdhkar = document.getElementById('navAdhkar');
     const adhkarPage = document.getElementById('adhkarPage');
     const adhkarHome = document.getElementById('adhkarHome');
