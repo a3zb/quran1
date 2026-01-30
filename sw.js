@@ -6,6 +6,13 @@ const ASSETS_TO_CACHE = [
   '/style.css',
   '/script.js',
   '/data.js',
+  '/tafsir_logic.js',
+  '/adhkar_advanced.js',
+  '/hadiths_logic.js',
+  '/prayer_logic.js',
+  '/score_engine.js',
+  '/ai_companion.js',
+  '/adkar.json',
   '/favicon.png'
 ];
 
@@ -31,24 +38,34 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch Event
+// Fetch Event: Cache-First Strategy
 self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      // If found in cache, return it
+      // If found in cache, return it immediately
       if (cachedResponse) return cachedResponse;
 
       // Otherwise fetch from network
       return fetch(event.request).then((networkResponse) => {
-        // Only cache regular assets automatically, not large media
-        const isMedia = event.request.url.includes('.mp3') || event.request.url.includes('.mp4');
+        // Validation check
+        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic' && !event.request.url.includes('http')) {
+          return networkResponse;
+        }
 
-        if (!isMedia && event.request.method === 'GET') {
-          const responseToCache = networkResponse.clone();
+        const isMedia = event.request.url.includes('.mp3') || event.request.url.includes('.mp4');
+        const isDataApi = event.request.url.includes('cdn.jsdelivr.net') || event.request.url.includes('.json');
+        const responseToCache = networkResponse.clone();
+
+        if (isMedia) {
+          caches.open(MEDIA_CACHE).then(cache => cache.put(event.request, responseToCache));
+        } else if (isDataApi || event.request.method === 'GET') {
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache));
         }
 
         return networkResponse;
+      }).catch(err => {
+        // If both fail, we can return an offline page here if we had one
+        console.error("Fetch failed", err);
       });
     })
   );

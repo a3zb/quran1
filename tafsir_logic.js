@@ -232,6 +232,77 @@ if (tafsirSelect) {
 /* The drawer open logic is in script.js, but since elements are static in HTML, 
    initializing once here is usually enough unless buttons are re-created. */
 
+// --- Tafsir Offline Download Logic ---
+async function downloadCurrentTafsir() {
+    const source = window.currentTafsirSource || 'moyassar';
+    const slugs = TAFSIR_SLUGS[source];
+    if (!slugs || slugs.length === 0) {
+        alert("هذا المصدر غير متاح للتحميل حالياً.");
+        return;
+    }
+
+    const slug = slugs[0]; // Use the primary slug
+    const downloadBtn = document.getElementById('downloadTafsirBtn');
+    const originalIcon = downloadBtn.innerHTML;
+
+    if (!confirm(`هل تريد تحميل تفسير ${source} كاملاً (114 سورة) للاستخدام بدون إنترنت؟ قد يستغرق هذا بضع دقائق.`)) {
+        return;
+    }
+
+    downloadBtn.disabled = true;
+    downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+    let progress = 0;
+    const total = 114;
+
+    // Create a progress toast if function exists
+    if (window.showPointToast) {
+        window.showPointToast(0, `جاري بدء تحميل تفسير ${source}...`);
+    }
+
+    try {
+        for (let i = 1; i <= total; i++) {
+            const url = `https://cdn.jsdelivr.net/gh/spa5k/tafsir_api@main/tafsir/${slug}/${i}.json`;
+
+            // Fetch will trigger SW to cache it
+            await fetch(url).catch(e => console.warn(`Failed to pre-cache surah ${i}`, e));
+
+            progress++;
+            if (i % 10 === 0 || i === total) {
+                console.log(`Tafsir Download Progress: ${Math.round((progress / total) * 100)}%`);
+                if (window.showPointToast && i % 30 === 0) {
+                    window.showPointToast(0, `تم تحميل ${i} سورة من التفسير...`);
+                }
+            }
+
+            // Batch delay every 5 surahs to be safe
+            if (i % 5 === 0) {
+                await new Promise(r => setTimeout(r, 800));
+            }
+        }
+
+        downloadBtn.innerHTML = '<i class="fas fa-check-double" style="color: #4caf50;"></i>';
+        if (window.showPointToast) {
+            window.showPointToast(50, `تم تحميل التفسير كاملاً بنجاح! يمكنك الآن استخدامه أوفلاين.`);
+        } else {
+            alert("تم تحميل التفسير كاملاً بنجاح!");
+        }
+
+    } catch (error) {
+        console.error("Tafsir download error:", error);
+        downloadBtn.innerHTML = '<i class="fas fa-exclamation-triangle" style="color: #f44336;"></i>';
+        alert("حدث خطأ أثناء التحميل. يرجى التأكد من الاتصال والمحاولة لاحقاً.");
+    } finally {
+        setTimeout(() => {
+            downloadBtn.disabled = false;
+            downloadBtn.innerHTML = originalIcon;
+        }, 5000);
+    }
+}
+
+// Ensure it's available globally
+window.downloadCurrentTafsir = downloadCurrentTafsir;
+
 // Explicitly define closeTafsir globally here to ensure availability
 window.closeTafsir = function () {
     const drawer = document.getElementById('tafsirDrawer');

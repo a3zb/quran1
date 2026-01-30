@@ -142,7 +142,146 @@ loadAdhkarData();
 
 
 
-// --- Universal Router & Navigation ---
+// Helper to check if a URL is cached
+async function isUrlCached(url) {
+    if (!('caches' in window)) return false;
+    const cache = await caches.open('quran-media-cache');
+    const response = await cache.match(url);
+    return !!response;
+}
+
+// Function to update the download button UI based on cache status
+async function updateDownloadButtonUI() {
+    const downloadBtn = document.getElementById('downloadSurahBtn');
+    if (!downloadBtn) return;
+
+    const currentSong = songs[currentSongIndex];
+    if (!currentSong || !currentSong.audioSrc) return;
+
+    const cached = await isUrlCached(currentSong.audioSrc);
+    if (cached) {
+        downloadBtn.innerHTML = '<i class="fas fa-check-circle"></i> تم التحميل';
+        downloadBtn.classList.add('download-success');
+        downloadBtn.title = "موجود في ذاكرة الأوفلاين";
+    } else {
+        downloadBtn.innerHTML = '<i class="fas fa-download"></i> تحميل للأوفلاين';
+        downloadBtn.classList.remove('download-success');
+        downloadBtn.title = "تحميل للاستماع بدون إنترنت";
+    }
+}
+
+// Listen for messages from Service Worker
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data.action === 'download-complete') {
+            console.log('Download complete reported by SW:', event.data.url);
+            updateDownloadButtonUI();
+            if (typeof showPointToast === 'function') {
+                showPointToast(10, "تم تحميل السورة بنجاح! يمكنك الآن الاستماع لها بدون إنترنت.");
+            }
+        }
+    });
+}
+// Background Pre-caching for Offline Mode (Lightweight: Hadiths & Essential Tafsir)
+async function preCacheOfflineContent() {
+    if (!('serviceWorker' in navigator)) return;
+
+    console.log("🌙 Starting background pre-cache for offline use...");
+
+    // 1. Pre-cache all Hadith Books
+    const hadithBooks = [
+        'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-nawawi.json',
+        'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-bukhari.json',
+        'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-muslim.json',
+        'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-abudawud.json',
+        'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-tirmidhi.json',
+        'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-nasai.json',
+        'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-ibnmajah.json'
+    ];
+
+    // 2. Pre-cache basic Tafsir (e.g., Jalalayn - small and complete)
+    const EssentialTafsirs = ['ar-tafsir-al-jalalayn', 'ar-tafsir-muyassar'];
+
+    const urlsToCache = [...hadithBooks];
+    for (const slug of EssentialTafsirs) {
+        for (let i = 1; i <= 15; i++) { // Increase to 15 surahs
+            urlsToCache.push(`https://cdn.jsdelivr.net/gh/spa5k/tafsir_api@main/tafsir/${slug}/${i}.json`);
+        }
+    }
+
+    // Process in small batches
+    for (let i = 0; i < urlsToCache.length; i += 3) {
+        const batch = urlsToCache.slice(i, i + 3);
+        await Promise.allSettled(batch.map(url => fetch(url, { mode: 'no-cors' }).catch(() => { })));
+        await new Promise(r => setTimeout(r, 1500));
+    }
+
+    console.log("✅ Background text pre-cache complete.");
+}
+
+// Master Background Sync: Downloads everything (Audio + Hadith + Tafsir)
+async function startMasterOfflineSync() {
+    if (!('serviceWorker' in navigator)) {
+        alert("متصفحك لا يدعم نظام الأوفلاين حالياً.");
+        return;
+    }
+
+    const startBtn = document.getElementById('startMasterSyncBtn');
+    const wrapper = document.getElementById('masterSyncProgressWrapper');
+    const progressBar = document.getElementById('masterSyncProgressBar');
+    const statusText = document.getElementById('masterSyncStatus');
+
+    if (!confirm("هل تريد تحميل المصحف كاملاً (كل السور) مع الأحاديث والتفاسير للاستخدام بدون إنترنت؟ سيتم التحميل في الخلفية.")) {
+        return;
+    }
+
+    startBtn.style.display = 'none';
+    wrapper.style.display = 'block';
+
+    statusText.textContent = "جاري تحضير البيانات...";
+
+    // 1. Pre-cache basic text data
+    await preCacheOfflineContent();
+
+    // 2. Download All Surahs Audio (Sequential in batches)
+    const totalSongs = songs.length;
+    let completed = 0;
+
+    for (let i = 0; i < totalSongs; i++) {
+        const song = songs[i];
+        if (song.audioSrc) {
+            statusText.textContent = `جاري تحميل سورة ${song.title}...`;
+
+            const isCached = await isUrlCached(song.audioSrc);
+            if (!isCached) {
+                try {
+                    await fetch(song.audioSrc, { mode: 'no-cors' });
+                } catch (e) { console.warn(`Failed to sync ${song.title}`, e); }
+            }
+
+            completed++;
+            const percent = Math.round((completed / totalSongs) * 100);
+            progressBar.style.width = `${percent}%`;
+
+            if (i % 3 === 0) await new Promise(r => setTimeout(r, 1000));
+        }
+    }
+
+    statusText.textContent = "✅ اكتمل التحميل! المصحف متاح أوفلاين.";
+    statusText.style.color = "#4caf50";
+
+    if (typeof showPointToast === 'function') {
+        showPointToast(100, "تم تحميل التطبيق كاملاً بنجاح! يمكنك الآن استخدامه في أي مكان بدون إنترنت.");
+    }
+
+    setTimeout(() => {
+        wrapper.style.display = 'none';
+        startBtn.style.display = 'flex';
+        startBtn.innerHTML = '<i class="fas fa-check-circle"></i> تم التحميل بنجاح';
+        startBtn.style.borderColor = '#4caf50';
+    }, 5000);
+}
+
 let isNavigating = false;
 
 function navigateTo(pageId, options = {}) {
@@ -335,18 +474,97 @@ function isLastRead(surahId) {
     return saved.surahId == surahId;
 }
 
-// Search Logic for Reading Page
+// Search Logic for Reading Page (Deep Search: Surahs + Verses)
 if (readingSearchInput) {
     readingSearchInput.addEventListener('input', (e) => {
-        const term = e.target.value;
+        const term = e.target.value.trim();
+        if (!term) {
+            renderReadingSurahList(songs);
+            return;
+        }
+
         const regex = buildArabicDiacriticInsensitiveRegex(term);
-        const filtered = songs.filter(s => regex.test(s.title));
-        renderReadingSurahList(filtered);
+        const results = [];
+
+        // 1. Check Surah Titles
+        songs.forEach(surah => {
+            if (regex.test(surah.title)) {
+                results.push({ type: 'surah', data: surah });
+            }
+        });
+
+        // 2. Check Verse Contents (Only if term is long enough or no surah matches to keep performance/relevance)
+        if (term.length >= 2) {
+            songs.forEach(surah => {
+                if (surah.lyrics) {
+                    surah.lyrics.forEach((verse, idx) => {
+                        if (regex.test(verse.text)) {
+                            results.push({
+                                type: 'verse',
+                                surah: surah,
+                                verseNum: idx + 1,
+                                text: verse.text
+                            });
+                        }
+                    });
+                }
+            });
+        }
+
+        renderReadingSearchResults(results, term);
+    });
+}
+
+function renderReadingSearchResults(results, term) {
+    readingSurahListElement.innerHTML = '';
+
+    if (results.length === 0) {
+        readingSurahListElement.innerHTML = '<li class="no-results">لا توجد نتائج مطابقة لبحثك</li>';
+        return;
+    }
+
+    // Sort: Surahs first, then verses
+    results.sort((a, b) => {
+        if (a.type === b.type) return 0;
+        return a.type === 'surah' ? -1 : 1;
+    });
+
+    results.slice(0, 50).forEach((item, index) => { // Limit to 50 for performance
+        const li = document.createElement('li');
+        li.className = item.type === 'verse' ? 'search-verse-item' : '';
+
+        if (item.type === 'surah') {
+            const surah = item.data;
+            li.innerHTML = `
+                <img src="${surah.albumArtUrl || 'favicon.png'}" alt="${surah.title}" class="song-art-list">
+                <div class="song-info-list">
+                    <h3>${surah.title}</h3>
+                    <p>${surah.lyrics ? surah.lyrics.length : 0} آية</p>
+                </div>
+            `;
+            li.onclick = () => openReadingSurah(surah);
+        } else {
+            const surah = item.surah;
+            // Highlight match in preview
+            let highlightedText = item.text.replace(new RegExp(`(${term})`, 'gi'), '<mark>$1</mark>');
+            // If regex was complex, we just use the simple highlight or leave as is
+
+            li.innerHTML = `
+                <div class="song-info-list" style="padding-right: 15px;">
+                    <h3 style="font-size: 0.9rem; opacity: 0.8;">${surah.title} - آية ${item.verseNum}</h3>
+                    <p class="search-verse-preview" style="font-family: 'Amiri', serif; color: #fff; font-size: 1.1rem; line-height: 1.6;">${item.text}</p>
+                </div>
+            `;
+            li.onclick = () => openReadingSurah(surah, item.verseNum);
+        }
+
+        li.style.animationDelay = `${index * 0.05}s`;
+        readingSurahListElement.appendChild(li);
     });
 }
 
 // 3. Open Specific Surah (Detail View)
-function openReadingSurah(surah) {
+function openReadingSurah(surah, targetVerseNum = null) {
     currentReadingIndex = songs.indexOf(surah); // Update global index
     readingListView.style.display = 'none';
     readingDetailView.style.display = 'block';
@@ -357,14 +575,22 @@ function openReadingSurah(surah) {
     // Render Verses
     renderReadingContent(surah);
 
-    // Auto-scroll to saved position if exists
+    // Auto-scroll logic
     const saved = JSON.parse(localStorage.getItem('lastReadProgress') || '{}');
-    if (saved.surahId == surah.id) {
+    const verseToFind = targetVerseNum || (saved.surahId == surah.id ? saved.verseNum : null);
+
+    if (verseToFind) {
         setTimeout(() => {
-            const verseEl = document.querySelector(`.verse-item[data-verse="${saved.verseNum}"]`);
+            const verseEl = document.querySelector(`.verse-item[data-verse="${verseToFind}"]`);
             if (verseEl) {
                 verseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 verseEl.classList.add('marked-read');
+
+                // If it was a search result, maybe give it a temporary flash
+                if (targetVerseNum) {
+                    verseEl.style.background = 'rgba(168, 85, 247, 0.4)';
+                    setTimeout(() => verseEl.style.background = '', 2000);
+                }
             }
         }, 300);
     }
@@ -1142,6 +1368,7 @@ function loadSong(song) {
     };
     audioPlayer.load();
     updatePlayPauseIcon();
+    updateDownloadButtonUI(); // Check if this new song is cached
     // Refresh bookmarks view if panel is open
     if (typeof renderBookmarks === 'function' && bookmarksPanel && bookmarksPanel.style.display === 'block') {
         renderBookmarks();
@@ -2374,22 +2601,41 @@ function loadLyricsSettings() {
     updateLyricsFontSize();
 }
 
-// Download Surah functionality
+// Download Surah functionality (Service Worker Cache)
 if (downloadSurahBtn) {
     downloadSurahBtn.addEventListener('click', () => {
-        const song = getCurrentSong();
+        const song = songs[currentSongIndex];
         if (!song || !song.audioSrc) {
             alert('لا توجد سورة محملة للتحميل');
             return;
         }
 
-        // Open audio in new tab (works in file:// protocol)
-        window.open(song.audioSrc, '_blank');
+        // Check if already cached
+        isUrlCached(song.audioSrc).then(cached => {
+            if (cached) {
+                if (confirm('هذه السورة محملة بالفعل. هل تريد إعادة تحميلها؟')) {
+                    triggerDownload();
+                }
+            } else {
+                triggerDownload();
+            }
+        });
 
-        // Show instructions
-        setTimeout(() => {
-            alert(`تم فتح السورة في نافذة جديدة.\n\nللتحميل:\n1. انقر بزر الماوس الأيمن على المشغل\n2. اختر "حفظ الصوت باسم..." أو "Save Audio As..."\n3. احفظ الملف في المكان الذي تريده`);
-        }, 500);
+        function triggerDownload() {
+            downloadSurahBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التحميل...';
+
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                // Send download message to SW
+                navigator.serviceWorker.controller.postMessage({
+                    action: 'download',
+                    url: song.audioSrc
+                });
+            } else {
+                // Fallback: Just open in new tab
+                window.open(song.audioSrc, '_blank');
+                alert('عذراً، نظام التحميل التلقائي غير مفعل حالياً. سيتم فتح الملف للتحميل اليدوي.');
+            }
+        }
     });
 }
 
@@ -2473,6 +2719,9 @@ function init() {
     setupAdhkarFeature();
 
     console.log("Initialization complete.");
+
+    // Start background caching for offline use after a delay
+    setTimeout(preCacheOfflineContent, 5000);
 }
 
 

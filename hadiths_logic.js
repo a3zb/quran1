@@ -29,6 +29,34 @@ let currentSearchTerm = '';
 let displayedCount = 50;
 const PAGE_SIZE = 50;
 
+// Helper to normalize Arabic text for searching
+function normalizeArabic(text) {
+    if (!text) return "";
+    return text
+        .replace(/[\u064B-\u0652\u0670]/g, "") // Remove diacritics
+        .replace(/[أإآ]/g, "ا")
+        .replace(/ة/g, "ه")
+        .replace(/ى/g, "ي")
+        .toLowerCase()
+        .trim();
+}
+
+function buildHadithRegex(term) {
+    if (!term) return null;
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const diacs = "[\u064B-\u0652\u0670]*";
+    let pattern = escaped
+        .split("")
+        .map(ch => {
+            if (/[اأإآ]/.test(ch)) return `[اأإآ]${diacs}`;
+            if (/[هه]/.test(ch)) return `[ةه]${diacs}`;
+            if (/[يى]/.test(ch)) return `[يى]${diacs}`;
+            return `${ch}${diacs}`;
+        })
+        .join("");
+    return new RegExp(`(${pattern})`, 'gi');
+}
+
 async function setupHadithFeature() {
     const navHadith = document.getElementById('navHadith');
     const hadithSearchInput = document.getElementById('hadithSearchInput');
@@ -113,9 +141,13 @@ async function setupHadithFeature() {
 
 function applyHadithFilters() {
     filteredHadiths = allHadiths.filter(h => {
-        // 1. Search filter
-        const text = (h.hadith || h.text || "").toLowerCase();
-        if (currentSearchTerm && !text.includes(currentSearchTerm)) return false;
+        // 1. Search filter (Robust diacritic-insensitive matching)
+        if (currentSearchTerm) {
+            const hText = (h.hadith || h.text || "");
+            const normalizedH = normalizeArabic(hText);
+            const normalizedQuery = normalizeArabic(currentSearchTerm);
+            if (!normalizedH.includes(normalizedQuery)) return false;
+        }
 
         // 2. Chapter range filter
         if (currentChapterRange) {
@@ -334,8 +366,20 @@ function renderHadiths(hadiths, append = false) {
             gradeInfo = `<div class="hadith-grade ${gradeClass}">${gradeAr}</div>`;
         }
 
+        let mainText = item.hadith || item.text || "";
+
+        // HIGHLIGHT SEARCH TERM (Robust)
+        if (currentSearchTerm) {
+            try {
+                const regex = buildHadithRegex(currentSearchTerm);
+                if (regex) {
+                    mainText = mainText.replace(regex, '<mark class="hadith-highlight">$1</mark>');
+                }
+            } catch (e) { console.error("Highlight error", e); }
+        }
+
         div.innerHTML = `
-            <div class="hadith-text">${item.hadith || item.text || ""}</div>
+            <div class="hadith-text">${mainText}</div>
             <div class="hadith-footer">
                 ${gradeInfo}
                 <div class="hadith-info">

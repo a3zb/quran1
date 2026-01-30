@@ -82,6 +82,28 @@
                 <a href="#" id="navPrayer" class="menu-item"><i class="fas fa-clock"></i> <span>مواقيت الصلاة</span></a>
 
                 <a href="#" id="navSettings" class="menu-item"><i class="fas fa-cog"></i> <span>الإعدادات</span></a>
+
+                <div class="menu-divider" style="height: 1px; background: rgba(255,255,255,0.1); margin: 15px 0;"></div>
+
+                <!-- Background Sync Manager -->
+                <div class="sync-manager-sidebar" style="padding: 10px 15px;">
+                    <button id="startMasterSyncBtn" class="sync-start-btn" onclick="startMasterOfflineSync()"
+                        style="width: 100%; padding: 12px; border-radius: 12px; border: 1px solid rgba(168,85,247,0.3); background: rgba(168,85,247,0.1); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 0.9rem; transition: 0.3s;">
+                        <i class="fas fa-cloud-arrow-down"></i>
+                        <span>تحميل المصحف أوفلاين</span>
+                    </button>
+                    <div id="masterSyncProgressWrapper" style="display: none; margin-top: 10px;">
+                        <div class="sync-progress-bar-bg"
+                            style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                            <div id="masterSyncProgressBar"
+                                style="width: 0%; height: 100%; background: linear-gradient(90deg, #a855f7, #ec4899); transition: width 0.3s;">
+                            </div>
+                        </div>
+                        <p id="masterSyncStatus"
+                            style="font-size: 0.75rem; color: rgba(255,255,255,0.6); margin-top: 5px; text-align: center;">
+                            جاري التجهيز...</p>
+                    </div>
+                </div>
             </nav>
             </nav>
             <div class="menu-footer">
@@ -366,14 +388,22 @@
 
     <!-- Reading Mode Page (Daily Word Sanctuary) -->
     <div id="readingPage" class="page">
-        <!-- Persistent Khatmah Planner: Visible in both List and Detail -->
+        <!-- Persistent Khatmah Planner: Centrally managed -->
         <div id="khatmahPlanner" class="khatmah-planner-card" style="margin-top: 20px;">
             <div class="planner-header">
                 <h3><i class="fas fa-star"></i> خطة الختمة اليومية <span id="currentKhatmahDayBadge"
                         class="khatmah-day-badge">اليوم 1</span></h3>
-                <div class="planner-meta" style="display:flex; align-items:center; gap:10px;">
+                <div class="planner-meta" style="display:flex; align-items:center; gap:12px;">
                     <span id="khatmahStreak" class="streak-badge" title="سلسلة الإنجاز اليومي"><i
                             class="fas fa-fire"></i> 0 يوم</span>
+                    <!-- Settings/Modal trigger moved here -->
+                    <button class="icon-only-btn" onclick="showKhatmahPlanModal()" title="تعديل الخطة">
+                        <i class="fas fa-gear"></i>
+                    </button>
+                    <!-- Permanent Fullscreen trigger -->
+                    <button class="icon-only-btn" onclick="toggleFullScreen()" title="ملء الشاشة">
+                        <i class="fas fa-expand"></i>
+                    </button>
                 </div>
             </div>
             <div class="planner-body">
@@ -384,7 +414,13 @@
                     <div class="progress-container-mini">
                         <div id="dailyProgress" class="progress-bar-mini" style="width: 0%"></div>
                     </div>
-                    <small id="dailyStatusText">أكملت بفضل الله 0 يوماً</small>
+
+                    <div class="card-action-row">
+                        <small id="dailyStatusText">أكملت بفضل الله 0 يوماً</small>
+                        <button onclick="resumeReading()" class="resume-btn-mini">
+                            <i class="fas fa-play"></i> تابع القراءة
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Start Button if no plan -->
@@ -401,20 +437,9 @@
         <!-- View 1: Surah List & Search -->
         <div id="readingListView" style="display: block; width: 100%; height: auto;">
             <header>
-                <div class="header-content" style="flex-direction: column; gap: 15px;">
-                    <h1>الورد اليومي</h1>
-                    <!-- Reverted to 3 Buttons -->
-                    <div class="reading-khatmah-btns">
-                        <div class="khatmah-btn" onclick="showKhatmahPlanModal()" title="خطة الختمة">
-                            <i class="fas fa-calendar-alt"></i>
-                        </div>
-                        <div class="khatmah-btn" onclick="resumeReading()" title="تابع القراءة">
-                            <i class="fas fa-play"></i>
-                        </div>
-                        <div class="khatmah-btn" onclick="toggleFullScreen()" title="ملء الشاشة">
-                            <i class="fas fa-expand"></i>
-                        </div>
-                    </div>
+                <div class="header-content" style="flex-direction: column; gap: 10px; align-items: center;">
+                    <h1 style="margin-bottom: 5px;">الورد اليومي</h1>
+                    <!-- REDUNDANT BUTTONS REMOVED - Centralized in card -->
                 </div>
             </header>
 
@@ -457,12 +482,9 @@
                     <h2 id="readingSurahTitle">سورة ...</h2>
                 </div>
                 <div class="reading-actions" style="display:flex; gap:10px; margin-top: 10px; justify-content: center;">
-                    <button id="khatmahSettingsBtn" class="action-btn" title="تخطيط الختمة"><i
-                            class="fas fa-calendar-check"></i></button>
                     <button id="listenFromReadingBtn" class="action-btn" title="استماع لهذه السورة"><i
                             class="fas fa-play"></i></button>
-                    <button id="toggleImmersiveBtn" class="action-btn" title="وضع التدبر"><i
-                            class="fas fa-expand"></i></button>
+                    <!-- Settings and Fullscreen are now in the persistent Khatmah Card -->
                 </div>
             </header>
 
