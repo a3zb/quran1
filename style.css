@@ -6771,72 +6771,176 @@ body.immersive-mode #exitImmersiveBtn {
 
 /* 4. AI Companion - Top Position & Clickable Look */
 #ai-notification-container {
-    top: 80px !important;
-    /* Force Top Position */
-    bottom: auto !important;
-    /* Override bottom */
-    left: 50% !important;
-    transform: translateX(-50%);
-    width: 92%;
-    max-width: 400px;
-    transition: top 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    z-index: 9999;
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 320px;
+    max-width: 90vw;
+    z-index: 11000;
+    pointer-events: none;
+    transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    opacity: 0;
+    transform: translateX(50px);
 }
 
 #ai-notification-container.visible {
-    top: 90px !important;
-    /* Slide down slightly */
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: auto;
 }
 
 .ai-card {
-    cursor: pointer;
-    background: rgba(45, 0, 77, 0.95);
-    /* Deep Purple #2D004D */
-    border: 1px solid rgba(255, 215, 0, 0.3);
-    /* Faint Gold Border */
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    background: linear-gradient(135deg, rgba(45, 0, 77, 0.98) 0%, rgba(20, 10, 40, 1) 100%);
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), 0 0 20px rgba(168, 85, 247, 0.2);
     border-radius: 20px;
-    padding: 15px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: relative;
+    backdrop-filter: blur(20px);
+}
+
+.ai-header-flex {
     display: flex;
     align-items: center;
-    gap: 15px;
-    position: relative;
-    overflow: hidden;
+    gap: 12px;
 }
 
 .ai-icon {
-    font-size: 2.5rem;
-    filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.5));
+    font-size: 2rem;
+    background: rgba(168, 85, 247, 0.15);
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 14px;
+    border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.ai-content h4 {
+    margin: 0;
+    color: #a855f7;
+    font-size: 1rem;
+    font-weight: 800;
+}
+
+.ai-content p {
+    margin: 4px 0 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .ai-action-btn {
-    background: linear-gradient(135deg, #a855f7 0%, #6b21a8 100%);
+    background: linear-gradient(90deg, #a855f7, #ec4899);
     color: white;
     border: none;
-    padding: 8px 20px;
-    border-radius: 25px;
+    padding: 10px 15px;
+    border-radius: 12px;
     font-weight: bold;
+    font-size: 0.85rem;
     cursor: pointer;
     transition: all 0.3s ease;
-    margin-top: 10px;
+    width: 100%;
+    margin-top: 5px;
 }
 
-.ai-action-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(168, 85, 247, 0.4);
-    filter: brightness(1.1);
-}
-
-
-/* FINAL FIXES: AI Close Button & Reading Header */
 .ai-close {
-    pointer-events: auto !important;
-    cursor: pointer;
-    z-index: 99999 !important;
-    padding: 15px;
-    background: rgba(255, 255, 255, 0.1);
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.05);
     border-radius: 50%;
-    margin: 5px;
+    font-size: 14px;
+    cursor: pointer;
+    color: rgba(255, 255, 255, 0.4);
+    transition: 0.2s;
+}
+
+.ai-close:hover {
+    background: rgba(255, 0, 0, 0.1);
+    color: #ff4d4d;
+}
+
+/* --- Premium Point/Message Toast --- */
+.point-toast-container {
+    position: fixed;
+    top: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto;
+    max-width: 90vw;
+    z-index: 12000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+}
+
+.point-toast {
+    background: rgba(20, 10, 35, 0.9);
+    backdrop-filter: blur(15px);
+    border-left: 4px solid #a855f7;
+    border-radius: 12px;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    animation: toastIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+    pointer-events: auto;
+}
+
+.toast-points {
+    background: linear-gradient(135deg, #ffd700, #b8860b);
+    color: black;
+    font-weight: 900;
+    padding: 4px 10px;
+    border-radius: 8px;
+    min-width: 40px;
+    text-align: center;
+}
+
+.toast-msg {
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+@keyframes toastIn {
+    from {
+        opacity: 0;
+        transform: translateY(-30px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes toastOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+}
+
+.point-toast.hiding {
+    animation: toastOut 0.4s ease forwards;
 }
 
 #readingDetailView .sticky-header,

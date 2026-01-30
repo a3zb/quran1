@@ -2377,10 +2377,8 @@ function completeKhatmahDay() {
         scheduleKhatmahReminder();
 
         setTimeout(() => {
-            if (typeof showPointToast === 'function') {
+            if (window.showPointToast) {
                 showPointToast(points, "بارك الله فيك! تم إكمال ورد اليوم بنجاح وارتفع الستريك الخاص بك 🔥");
-            } else {
-                alert('بارك الله فيك! تم إكمال ورد اليوم.');
             }
         }, 500);
 
@@ -2390,7 +2388,9 @@ function completeKhatmahDay() {
     } else {
         // Completed the whole Khatmah!
         if (typeof awardPoints === 'function') awardPoints(500, 'إتمام ختمة كاملة');
-        alert('مبارك! لقد أتممت ختمة القرآن الكريم كاملة. يجعلها الله في ميزان حسناتك.');
+        if (window.showPointToast) {
+            showPointToast(0, 'مبارك! لقد أتممت ختمة القرآن الكريم كاملة. يجعلها الله في ميزان حسناتك.');
+        }
         localStorage.removeItem('khatmahPlan');
         khatmahPlan = null;
         navigateTo('homePage');
@@ -2606,7 +2606,7 @@ if (downloadSurahBtn) {
     downloadSurahBtn.addEventListener('click', () => {
         const song = songs[currentSongIndex];
         if (!song || !song.audioSrc) {
-            alert('لا توجد سورة محملة للتحميل');
+            showPointToast(0, 'لا توجد سورة محملة للتحميل');
             return;
         }
 
@@ -2633,7 +2633,7 @@ if (downloadSurahBtn) {
             } else {
                 // Fallback: Just open in new tab
                 window.open(song.audioSrc, '_blank');
-                alert('عذراً، نظام التحميل التلقائي غير مفعل حالياً. سيتم فتح الملف للتحميل اليدوي.');
+                showPointToast(0, 'عذراً، نظام التحميل التلقائي غير مفعل حالياً. سيتم فتح الملف للتحميل اليدوي.');
             }
         }
     });
@@ -3385,7 +3385,7 @@ function resumeReading() {
         if (typeof showPointToast === 'function') {
             showPointToast(0, "لم تقرأ شيئاً بعد للمتابعة");
         } else {
-            alert("لا يوجد تقدم محفوظ للمتابعة");
+            showPointToast(0, "لا يوجد تقدم محفوظ للمتابعة");
         }
     }
 }
@@ -3415,3 +3415,47 @@ function toggleFullScreen() {
         });
     }
 }
+
+/**
+ * Premium Toast System for Points and Feedback
+ * Replaces primitive alerts with high-end floating notifications
+ */
+function showPointToast(points, message) {
+    let container = document.getElementById('point-toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'point-toast-container';
+        container.className = 'point-toast-container';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'point-toast';
+
+    // Arabic RTL Check
+    const isArabic = /[\u0600-\u06FF]/.test(message);
+    if (isArabic) toast.style.direction = 'rtl';
+
+    let content = '';
+    if (points > 0) {
+        content += `<div class="toast-points">+${points}</div>`;
+    }
+    content += `<div class="toast-msg">${message}</div>`;
+
+    toast.innerHTML = content;
+    container.appendChild(toast);
+
+    // Auto remove
+    setTimeout(() => {
+        toast.classList.add('hiding');
+        setTimeout(() => {
+            toast.remove();
+            if (container.children.length === 0) {
+                container.remove();
+            }
+        }, 500);
+    }, 4000);
+}
+
+// Ensure it's globally accessible
+window.showPointToast = showPointToast;
