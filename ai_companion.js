@@ -1,128 +1,208 @@
 // ===================================
-// الخادم الذكي (Smart AI Companion) - نسخة 2.3 (المساعد المنضبط)
+// الخادم الذكي (Smart AI Companion)
 // ===================================
+// نظام ذكي يحلل الوقت ونشاط المستخدم لتقديم اقتراحات مخصصة
 
 window.SmartCompanion = {
-    // إعدادات
-    CONFIG: {
-        INITIAL_DELAY: 5000,
-        APPEARANCE_INTERVAL: 2 * 60 * 60 * 1000, // يظهر كل ساعتين
-        MIN_VISIBLE_TIME: 60000,                // دقيقة (60,000 ملي ثانية)
-        MAX_VISIBLE_TIME: 120000                // دقيقتان (120,000 ملي ثانية)
-    },
-
-    // مؤقت الإخفاء
-    hideTimer: null,
-
-    // قائمة أحاديث منتقاة (بخاري ومسلم فقط)
-    SAHIH_HADITHS: [
-        { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «مَنْ سَلَكَ طَرِيقًا يَلْتَمِسُ فِيهِ عِلْمًا، سَهَّلَ اللَّهُ لَهُ بِهِ طَرِيقًا إِلَى الْجَنَّةِ»", ref: "صحيح مسلم" },
-        { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «كَلِمَتَانِ خَفِيفَتَانِ عَلَى اللِّسَانِ، ثَقِيلَتَانِ فِي الْمِيزَانِ، حَبِيبَتَانِ إِلَى الرَّحْمَنِ: سُبْحَانَ اللَّهِ وَبِحَمْدِهِ، سُبْحَانَ اللَّهِ الْعَظِيمِ»", ref: "صحيح البخاري" },
-        { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «مَنْ قَرَأَ حَرْفًا مِنْ كِتَابِ اللَّهِ فَلَهُ بِهِ حَسَنَةٌ، وَالْحَسَنَةُ بِعَشْرِ أَمْثَالِهَا»", ref: "صحيح البخاري" },
-        { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «الدُّعَاءُ هُوَ الْعِبَادَةُ»", ref: "صحيح البخاري ومسلم" },
-        { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «خَيْرُكُمْ مَنْ تَعَلَّمَ الْقُرْآنَ وَعَلَّمَهُ»", ref: "صحيح البخاري" },
-        { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «لَا يُؤْمِنُ أَحَدُكُمْ حَتَّى يُحِبَّ لِأَخِيهِ مَا يُحِبُّ لِنَفْسِهِ»", ref: "صحيح البخاري ومسلم" },
-        { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «مَنْ كَانَ يُؤْمِنُ بِاللَّهِ وَالْيَوْمِ الْآخِرِ فَلْيَقُلْ خَيْرًا أَوْ لِيَصْمُطْ»", ref: "صحيح البخاري ومسلم" },
-        { text: "قَالَ رَسُولُ اللَّهِ ﷺ: «إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ»", ref: "صحيح البخاري ومسلم" }
-    ],
-
-    // أدعية قصيرة ومؤثرة
-    RANDOM_DUAS: [
-        "اللهم إنك عفو تحب العفو فاعف عني.",
-        "اللهم اهدني وسددني، وتوفني وأنت راضٍ عني.",
-        "يا مقلب القلوب ثبت قلبي على دينك.",
-        "اللهم ارزقني حبك وحب من يحبك وحب كل عمل يقربني إلى حبك.",
-        "ربنا آتنا في الدنيا حسنة وفي الآخرة حسنة وقنا عذاب النار.",
-        "اللهم اكفني بحلالك عن حرامك وأغنني بفضلك عمن سواك."
-    ],
-
+    // تهيئة النظام
     init() {
-        console.log('🤖 Smart Companion 2.3 Ready (Fixed Timing)');
+        console.log('🤖 Smart Companion Initialized');
 
-        this.setupSettingsToggle();
+        // Check user preference (default to true)
+        const isEnabled = localStorage.getItem('ai_enabled') !== 'false';
+        if (!isEnabled) {
+            console.log('🤖 AI Companion is disabled by user settings.');
+            return;
+        }
 
-        // التذكير الأول بعد 5 ثوانٍ من فتح الموقع
-        setTimeout(() => this.checkAndSuggest(), this.CONFIG.INITIAL_DELAY);
+        // Check if this is a new session
+        const isNewSession = !sessionStorage.getItem('ai_session_started');
+        if (isNewSession) {
+            sessionStorage.setItem('ai_session_started', 'true');
+            // Force reset last shown to ensure immediate appearance on app open
+            // but we only do this if it's been more than 5 minutes to avoid spam on quick refreshes
+            const last = localStorage.getItem('ai_last_shown');
+            if (last && (Date.now() - parseInt(last)) > 5 * 60 * 1000) {
+                // reset logic handled in checkAndSuggest via new param
+            }
+        }
 
-        // جدولة التذكيرات القادمة كل ساعتين
-        setInterval(() => this.checkAndSuggest(), this.CONFIG.APPEARANCE_INTERVAL);
+        // Immediate check (1 second delay)
+        setTimeout(() => {
+            this.checkAndSuggest(isNewSession);
+        }, 1000);
+
+        // Periodic check every 10 minutes
+        setInterval(() => {
+            this.checkAndSuggest(false);
+        }, 10 * 60 * 1000);
     },
 
-    setupSettingsToggle() {
-        const toggle = document.getElementById('aiCompanionToggle');
-        if (toggle) {
-            // تحميل الحالة المحفوظة
-            const savedState = localStorage.getItem('ai_companion_enabled');
-            if (savedState !== null) {
-                toggle.checked = savedState === 'true';
-            }
-
-            toggle.addEventListener('change', () => {
-                localStorage.setItem('ai_companion_enabled', toggle.checked);
-                if (!toggle.checked) this.dismiss();
-            });
+    // تبديل التفعيل من الإعدادات
+    toggleAI(enabled) {
+        localStorage.setItem('ai_enabled', enabled);
+        if (enabled) {
+            this.init();
+            this.showFeedback('تم تفعيل المساعد الذكي ✅');
+        } else {
+            this.dismiss();
+            this.showFeedback('تم إيقاف المساعد الذكي ❌');
         }
     },
 
-    checkAndSuggest() {
-        // التحقق إذا كان المستخدم قد عطّل المساعد
-        const enabled = localStorage.getItem('ai_companion_enabled') !== 'false';
-        if (!enabled) return;
+    // فحص الوقت والنشاط وتقديم الاقتراح المناسب
+    checkAndSuggest(forceShow = false) {
+        // Double check setting
+        if (localStorage.getItem('ai_enabled') === 'false') return;
 
         const now = new Date();
         const hour = now.getHours();
-        const day = now.getDay();
+        const day = now.getDay(); // 0 = Sun, 1 = Mon, ..., 5 = Fri
 
         let suggestion = null;
 
-        // 1. الأولوية للمناسبات الزمنية (صيام، جمعة، قيام)
-        if ((day === 0 || day === 3) && hour >= 18) {
+        // === 0. ULTRA PRIORITY: Khatmah Reminder ===
+        const reminderNeeded = localStorage.getItem('khatmah_reminder_needed') === 'true';
+        const reminderTime = parseInt(localStorage.getItem('khatmah_reminder_time') || '0');
+
+        if (reminderNeeded && Date.now() >= reminderTime) {
             suggestion = {
-                icon: '🌙', title: 'مبادرة مباركة',
-                text: day === 0 ? 'غداً يوم الاثنين.. هل تنوي الصيام؟' : 'غداً يوم الخميس.. ذكّر نفسك بالصيام.',
-                action: 'نويت الصيام', type: 'fard',
+                icon: '📖',
+                title: 'تذكير الورد اليومي',
+                text: 'مرت 24 ساعة منذ آخر ورد لك. حافظ على الستريك الخاص بك واقرأ ورد اليوم الآن.',
+                action: 'اقرأ وردي',
+                actionFn: () => this.openKhatmah()
+            };
+            // Reset reminder state
+            localStorage.setItem('khatmah_reminder_needed', 'false');
+        }
+
+        // === 1. High Priority: Fasting Reminders (Sun & Wed Evening, Mon & Thu Morning) ===
+        if ((day === 0 || day === 3) && hour >= 18) { // Sun or Wed Evening for next day
+            const targetDay = day === 0 ? 'الاثنين' : 'الخميس';
+            suggestion = {
+                icon: '🌙',
+                title: `تذكير صيام ${targetDay}`,
+                text: `غداً يوم ${targetDay}، وهو يوم تُرفع فيه الأعمال. هل نويت الصيام؟`,
+                action: 'نويت الصيام',
                 actionFn: () => this.showFeedback('تقبل الله منك! 🤲')
             };
-        } else if (day === 5 && !this.hasReadToday(18)) {
+        } else if ((day === 1 || day === 4) && hour < 5) { // Mon or Thu Fajr
             suggestion = {
-                icon: '🕌', title: 'نور الجمعة', text: 'طابت جمعتك! هل قرأت سورة الكهف?',
-                action: 'اقرأها الآن', actionFn: () => this.openSurah(18)
-            };
-        } else if (hour >= 23 || hour < 4) {
-            suggestion = {
-                icon: '🏹', title: 'سهام الليل', text: 'هل لك في ركعتين وقراءة قصيرة?',
-                action: 'قراءة القرآن', actionFn: () => { navigateTo('readingPage'); this.showFeedback('أبشر! تقبل الله طاعتك'); }
+                icon: '🥣',
+                title: 'وقت السحور',
+                text: 'تسحروا فإن في السحور بركة. صياماً مقبولاً.',
+                action: 'نويت الصيام',
+                actionFn: () => this.showFeedback('تقبل الله صيامك')
             };
         }
 
-        // 2. إذا لم يوجد موعد زمني، نعطيه "فائدة عشوائية" (حديث أو دعاء)
+        // === 2. Time-Specific Suggestions ===
         if (!suggestion) {
-            const isHadith = Math.random() > 0.5; // اختيار عشوائي بين حديث ودعاء
-
-            if (isHadith) {
-                const hadith = this.SAHIH_HADITHS[Math.floor(Math.random() * this.SAHIH_HADITHS.length)];
+            // Friday Kahf
+            if (day === 5 && !this.hasReadToday(18)) {
                 suggestion = {
-                    icon: '📜', title: 'درر من السنة',
-                    text: `${hadith.text} <br><small style="color:var(--accent-color)">[${hadith.ref}]</small>`,
-                    action: 'جزاك الله خيراً', actionFn: () => this.awardPointsForReading()
+                    icon: '🕌',
+                    title: 'جمعة مباركة',
+                    text: 'نور ما بين الجمعتين. هل قرأت سورة الكهف؟',
+                    action: 'اقرأها الآن',
+                    actionFn: () => this.openSurah(18)
                 };
-            } else {
-                const dua = this.RANDOM_DUAS[Math.floor(Math.random() * this.RANDOM_DUAS.length)];
+            }
+            // Morning Adhkar (5 AM - 11 AM)
+            else if (hour >= 5 && hour < 11 && !this.hasDoneAdhkarToday('morning')) {
                 suggestion = {
-                    icon: '✨', title: 'دعاء مستجاب',
-                    text: dua, action: 'آمين يا رب',
-                    actionFn: () => this.showFeedback('رزقك الله الإجابة.')
+                    icon: '☀️',
+                    title: 'صباح الخير',
+                    text: 'ابدأ يومك بذكر الله. أذكار الصباح حفظ وتحصين.',
+                    action: 'أذكار الصباح',
+                    actionFn: () => this.openAdhkar('أذكار الصباح')
                 };
+            }
+            // Evening Adhkar (3 PM - 9 PM)
+            else if (hour >= 15 && hour < 21 && !this.hasDoneAdhkarToday('evening')) {
+                suggestion = {
+                    icon: '🌙',
+                    title: 'مساء الخير',
+                    text: 'أمسينـا وأمسى الملك لله. حان وقت أذكار المساء.',
+                    action: 'أذكار المساء',
+                    actionFn: () => this.openAdhkar('أذكار المساء')
+                };
+            }
+            // Late Night (Qiyam)
+            else if (hour >= 23 || hour < 4) {
+                // Randomize slightly so isn't always qiyam if valid
+                if (Math.random() > 0.3) {
+                    suggestion = {
+                        icon: '✨',
+                        title: 'سهام الليل',
+                        text: 'ركعة في جوف الليل تضيء القبر. هل لك في الوتر؟',
+                        action: 'سأصلي',
+                        actionFn: () => this.showFeedback('تقبل الله منك')
+                    };
+                }
             }
         }
 
-        if (suggestion) this.showNotification(suggestion);
+        // === 3. Fallback: Random Benefit (Duas, Hadiths, Sunan) ===
+        // If no specific time suggestion OR if we want to mix it up occasionally
+        if (!suggestion) {
+            suggestion = this.getRandomBenefit();
+        }
+
+        // Display
+        if (suggestion) {
+            this.showNotification(suggestion, forceShow);
+        }
     },
 
-    showNotification(data) {
-        // منع التكرار إذا كان ظاهراً
-        const existing = document.querySelector('.ai-card.visible');
-        if (existing) return;
+    // Get a random beneficial content
+    getRandomBenefit() {
+        const benefits = [
+            // Sunan
+            { icon: '🦷', title: 'سنة مهجورة', text: 'قال ﷺ: "لولا أن أشق على أمتي لأمرتهم بالسواك عند كل صلاة".', action: 'إحياء السنة', actionFn: () => this.showFeedback('أحسنت!') },
+            { icon: '🏠', title: 'دخول المنزل', text: 'من السنة ذكر الله عند دخول المنزل لطرد الشياطين.', action: 'ذكرت الله', actionFn: () => this.showFeedback('حفظك الله ورعاك') },
+            { icon: '🧥', title: 'لبس الثوب', text: 'ابدأ باليمين عند اللبس، وباليسار عند الخلع.', action: 'تطبيق السنة', actionFn: () => this.showFeedback('بارك الله فيك') },
+
+            // Hadiths
+            { icon: '💬', title: 'حديث شريف', text: 'قال ﷺ: "الكلمة الطيبة صدقة".', action: 'صدقت يا رسول الله', actionFn: () => this.showFeedback('صلى الله عليه وسلم') },
+            { icon: '🤝', title: 'حديث شريف', text: 'قال ﷺ: "لا يؤمن أحدكم حتى يحب لأخيه ما يحب لنفسه".', action: 'صلى الله عليه وسلم', actionFn: () => this.showFeedback('عليه الصلاة والسلام') },
+            { icon: '💎', title: 'كنز من الجنة', text: 'قول: لا حول ولا قوة إلا بالله، كنز من كنوز الجنة.', action: 'قلها الآن', actionFn: () => this.showFeedback('لا حول ولا قوة إلا بالله') },
+
+            // Quran & Dua
+            { icon: '🤲', title: 'دعاء', text: 'رَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً وَفِي الآخِرَةِ حَسَنَةً وَقِنَا عَذَابَ النَّارِ.', action: 'آمين', actionFn: () => this.showFeedback('تقبل الله دعاءك') },
+            { icon: '❤', title: 'الاستغفار', text: 'من لزم الاستغفار جعل الله له من كل هم فرجاً.', action: 'استغفر الله', actionFn: () => this.showFeedback('أستغفر الله العظيم') },
+            { icon: '🤎', title: 'دعاء', text: 'اللهم لك سجدت وبك آمنت ولك أسلمت، سجد وجهي للذي خلقه وصوره وشق سمعه وبصره تبارك الله أحسن الخالقين', action: 'دعاء السجود', actionFn: () => this.showFeedback('تقبل الله دعاءك') },
+            { icon: '🙏', title: 'دعاء', text: 'اللهم إني أسألك الفردوس الأعلى من الجنّة بلا حساب ولا سابق عذاب', action: ' آمين', actionFn: () => this.showFeedback('تقبل الله دعاءك') }
+        ];
+        return benefits[Math.floor(Math.random() * benefits.length)];
+    },
+
+    // عرض الإشعار
+    showNotification(data, forceShow) {
+        // Use localStorage for persistence
+        const lastShown = localStorage.getItem('ai_last_shown');
+        const now = Date.now();
+
+        // Check cooldown (unless forced)
+        if (!forceShow && lastShown && (now - parseInt(lastShown)) < 900000) {
+            return;
+        }
+
+        // Show system notification as well if enabled
+        const systemEnabled = localStorage.getItem('systemNotifEnabled') !== 'false';
+        if (systemEnabled && Notification.permission === "granted") {
+            // Check if document is hidden (user not looking at app)
+            if (document.hidden) {
+                if (typeof showNotificationSystem === 'function') {
+                    showNotificationSystem(data.title, {
+                        body: data.text,
+                        icon: 'favicon.png',
+                        tag: 'ai-companion-notif'
+                    });
+                }
+            }
+        }
 
         let container = document.getElementById('ai-notification-container');
         if (!container) {
@@ -131,38 +211,28 @@ window.SmartCompanion = {
             document.body.appendChild(container);
         }
 
-        // تصميم أنيق مع دعم HTML للحديث
         container.innerHTML = `
             <div class="ai-card glass-card">
                 <div class="ai-icon">${data.icon}</div>
                 <div class="ai-content">
                     <h4>${data.title}</h4>
-                    <div class="ai-text-body" style="font-size:0.95rem; line-height:1.6; margin-bottom:12px;">${data.text}</div>
+                    <p>${data.text}</p>
                     <button class="ai-action-btn" onclick="window.SmartCompanion.handleAction()">${data.action}</button>
                 </div>
-                <div class="ai-close" onclick="window.SmartCompanion.dismiss()" title="إغلاق">×</div>
+                <div class="ai-close" onclick="window.SmartCompanion.dismiss()" ontouchstart="window.SmartCompanion.dismiss()">×</div>
             </div>
         `;
 
         this.currentAction = data.actionFn;
         container.classList.add('visible');
+        localStorage.setItem('ai_last_shown', now.toString()); // Update timestamp
 
-        // حساب الوقت الآمن (fallback if config missing)
-        let minTime = this.CONFIG ? this.CONFIG.MIN_VISIBLE_TIME : 60000;
-        let maxTime = this.CONFIG ? this.CONFIG.MAX_VISIBLE_TIME : 120000;
-
-        const visibleTime = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
-
-        console.log(`🤖 AI Notification shown. Will dismiss in ${(visibleTime / 1000).toFixed(1)} seconds.`);
-
-        // إلغاء أي مؤقت سابق
-        if (this.hideTimer) clearTimeout(this.hideTimer);
-
-        // ضبط المؤقت الجديد
-        this.hideTimer = setTimeout(() => {
-            console.log('🤖 Auto-dismissing notification now.');
-            this.dismiss();
-        }, visibleTime);
+        // Auto-hide
+        setTimeout(() => {
+            if (container.classList.contains('visible')) {
+                this.dismiss();
+            }
+        }, 120000);
     },
 
     handleAction() {
@@ -172,42 +242,68 @@ window.SmartCompanion = {
 
     dismiss() {
         const container = document.getElementById('ai-notification-container');
-        if (container) container.classList.remove('visible');
-        if (this.hideTimer) clearTimeout(this.hideTimer);
+        if (container) {
+            container.classList.remove('visible');
+            setTimeout(() => { container.innerHTML = ''; }, 500);
+        }
     },
 
     showFeedback(message) {
-        if (typeof showPointToast === 'function') showPointToast(0, message);
-        else alert(message);
+        if (typeof showPointToast === 'function') {
+            showPointToast(0, message);
+        } else {
+            alert(message);
+        }
     },
 
-    awardPointsForReading() {
-        if (typeof awardPoints === 'function') awardPoints(5, 'التفاعل مع السنة النبوية');
-        this.showFeedback('زادك الله علماً وإيماناً! ✨');
-    },
+    // === Helpers ===
+    getHijriDate() { return 1; },
 
-    // Helpers
     hasReadToday(surahId) {
         const saved = JSON.parse(localStorage.getItem('lastReadProgress') || '{}');
         if (saved.surahId == surahId) {
-            return new Date().toDateString() === new Date(saved.timestamp).toDateString();
+            const today = new Date().toDateString();
+            const savedDate = new Date(saved.timestamp).toDateString();
+            return today === savedDate;
         }
         return false;
     },
 
+    hasDoneAdhkarToday(type) {
+        const key = `adhkar_${type}_${new Date().toDateString()}`;
+        return localStorage.getItem(key) === 'done';
+    },
+
     openSurah(surahId) {
-        const surah = window.songs ? window.songs.find(s => s.id == surahId) : null;
+        this.showFeedback('جاري فتح السورة...');
+        const surah = songs.find(s => s.id == surahId);
         if (surah && typeof openReadingSurah === 'function') {
             navigateTo('readingPage');
-            setTimeout(() => openReadingSurah(surah), 500);
+            setTimeout(() => { openReadingSurah(surah); }, 500);
         }
+    },
+
+    openKhatmah() {
+        this.showFeedback('جاري فتح ورد اليوم... 📖');
+        if (typeof showReadingPageWithKhatmah === 'function') {
+            showReadingPageWithKhatmah();
+        } else {
+            navigateTo('readingPage');
+        }
+    },
+
+    openAdhkar(categoryName) {
+        this.showFeedback('حي على الذكر...');
+        navigateTo('adhkarPage');
+        setTimeout(() => {
+            if (typeof openAdhkarCategory === 'function') openAdhkarCategory(categoryName);
+        }, 500);
     }
 };
 
-// تشغيل
+// Start
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => window.SmartCompanion.init());
 } else {
     window.SmartCompanion.init();
 }
-

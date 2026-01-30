@@ -184,7 +184,7 @@ function navigateTo(pageId, options = {}) {
 }
 
 function showTargetPage(targetPage, pageId, options) {
-    targetPage.style.display = 'flex';
+    targetPage.style.display = 'block';
     // Trigger reflow for animation
     targetPage.offsetHeight;
     targetPage.classList.add('active');
@@ -297,9 +297,10 @@ let clickTimer = null; // For handling single vs double click
 // 1. Show the Surah List
 function showReadingPageList() {
     navigateTo('readingPage');
-    readingListView.style.display = 'block';
-    readingDetailView.style.display = 'none';
-    renderReadingSurahList(songs); // 'songs' contains the surah data
+    if (readingListView) readingListView.style.display = 'block';
+    if (readingDetailView) readingDetailView.style.display = 'none';
+    renderReadingSurahList(songs);
+    updateKhatmahUI(); // Ensure planner state is reflected
 }
 
 
@@ -334,21 +335,8 @@ function isLastRead(surahId) {
     return saved.surahId == surahId;
 }
 
-// Search Toggle & Logic for Reading Page
-const toggleReadingSearchBtn = document.getElementById('toggleReadingSearchBtn');
-if (toggleReadingSearchBtn && readingSearchInput) {
-    toggleReadingSearchBtn.onclick = () => {
-        const isHidden = readingSearchInput.style.display === 'none';
-        if (isHidden) {
-            readingSearchInput.style.display = 'block';
-            readingSearchInput.focus();
-        } else {
-            readingSearchInput.style.display = 'none';
-            readingSearchInput.value = '';
-            renderReadingSurahList(songs);
-        }
-    };
-
+// Search Logic for Reading Page
+if (readingSearchInput) {
     readingSearchInput.addEventListener('input', (e) => {
         const term = e.target.value;
         const regex = buildArabicDiacriticInsensitiveRegex(term);
@@ -1425,7 +1413,7 @@ playerPlayPauseBtn.addEventListener('click', () => {
     if (isPlaying) {
         pauseTrack();
     } else {
-        // function placeholder
+        playTrack();
     }
 });
 playerPrevBtn.addEventListener('click', prevTrack);
@@ -1638,12 +1626,6 @@ if (sleepTimerBtn && sleepTimerPopover) {
 
 // Auto-advance when a surah ends (respecting repeat/shuffle modes)
 audioPlayer.addEventListener('ended', () => {
-    // If in Single Verse Mode (e.g. Daily Verse), do NOT auto-advance
-    if (window.singleVerseMode) {
-        window.singleVerseMode = false; // Reset mode
-        return;
-    }
-
     if (repeatMode === 1) {
         // Repeat-one handled via audio.loop = true
         return;
@@ -1900,8 +1882,8 @@ const nextSurahReading = document.getElementById('nextSurahReading');
 if (prevSurahReading) {
     prevSurahReading.addEventListener('click', () => {
         if (currentReadingIndex > 0) {
-            openReadingSurah(songs[currentReadingIndex - 1]);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            showReadingPage(currentReadingIndex - 1);
+            readingPage.scrollTo({ top: 0, behavior: 'smooth' });
         }
     });
 }
@@ -1927,8 +1909,8 @@ if (nextSurahReading) {
         }
 
         if (currentReadingIndex < songs.length - 1) {
-            openReadingSurah(songs[currentReadingIndex + 1]);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            showReadingPage(currentReadingIndex + 1);
+            readingPage.scrollTo({ top: 0, behavior: 'smooth' });
         }
     });
 }
@@ -2143,8 +2125,8 @@ function completeKhatmahDay() {
         const diffInHours = (now - lastDate) / (1000 * 60 * 60);
         if (diffInHours < 48) {
             // Check if it's a new calendar day to increase streak
-            if (now.getDate() !== lastDate.getDate()) {
-                khatmahPlan.streak++;
+            if (now.toDateString() !== lastDate.toDateString()) {
+                khatmahPlan.streak = (khatmahPlan.streak || 0) + 1;
             }
         } else {
             khatmahPlan.streak = 1; // Reset streak if missed more than a day
@@ -2156,55 +2138,93 @@ function completeKhatmahDay() {
     khatmahPlan.lastInteractionDate = now.getTime();
 
     if (khatmahPlan.currentDay < khatmahPlan.days) {
-
         // Award points for the completed daily wird
-        const points = khatmahPlan.dailyTarget || 10;
-        awardPoints(points, `ورد اليوم ${khatmahPlan.currentDay}`);
+        const points = 50; // Standard points for daily khatmah
+        if (typeof awardPoints === 'function') awardPoints(points, `ورد اليوم ${khatmahPlan.currentDay}`);
 
         khatmahPlan.currentDay++;
         khatmahPlan.lastReadIndexInDay = -1; // Reset progress for the new day
         localStorage.setItem('khatmahPlan', JSON.stringify(khatmahPlan));
 
-        // Use toast instead of alert for smoother experience (since awardPoints does toast too, we can rely on that or show a separate success message)
-        // Let's keep a friendly alert/modal or just let the point toast speak for itself + the UI update.
-        // The user likes explicit confirmation.
-        setTimeout(() => alert('بارك الله فيك! تم إكمال ورد اليوم.'), 500);
+        // Notification Reminder: Schedule for tomorrow
+        scheduleKhatmahReminder();
+
+        setTimeout(() => {
+            if (typeof showPointToast === 'function') {
+                showPointToast(points, "بارك الله فيك! تم إكمال ورد اليوم بنجاح وارتفع الستريك الخاص بك 🔥");
+            } else {
+                alert('بارك الله فيك! تم إكمال ورد اليوم.');
+            }
+        }, 500);
 
         renderDailyKhatmahVerses();
         updateKhatmahUI();
         window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
         // Completed the whole Khatmah!
-        awardPoints(500, 'إتمام ختمة كاملة'); // Bonus points
+        if (typeof awardPoints === 'function') awardPoints(500, 'إتمام ختمة كاملة');
         alert('مبارك! لقد أتممت ختمة القرآن الكريم كاملة. يجعلها الله في ميزان حسناتك.');
         localStorage.removeItem('khatmahPlan');
         khatmahPlan = null;
-        showHomePage();
+        navigateTo('homePage');
+    }
+}
+
+function scheduleKhatmahReminder() {
+    const systemEnabled = localStorage.getItem('systemNotifEnabled') !== 'false';
+    if (systemEnabled && Notification.permission === "granted") {
+        // Since we can't do true background scheduling without a dedicated server or Push API,
+        // we use the AI companion's periodic check to see if a reminder is needed.
+        localStorage.setItem('khatmah_reminder_needed', 'true');
+        localStorage.setItem('khatmah_reminder_time', (Date.now() + 24 * 60 * 60 * 1000).toString());
     }
 }
 
 function updateKhatmahUI() {
-    if (!khatmahPlan) {
-        if (khatmahPlannerCard) khatmahPlannerCard.style.display = 'none';
-        return;
-    }
+    const activeContent = document.getElementById('activeKhatmahContent');
+    const noContent = document.getElementById('noKhatmahContent');
     const dailyVerseCountSpan = document.getElementById('dailyVerseCount');
     const khatmahDaysSpan = document.getElementById('khatmahDays');
     const dailyProgress = document.getElementById('dailyProgress');
     const dailyStatusText = document.getElementById('dailyStatusText');
+    const khatmahStreakSpan = document.getElementById('khatmahStreak');
+    const cardElement = document.getElementById('khatmahPlanner');
+
+    if (!cardElement) return;
+
+    // Force display always as requested
+    cardElement.style.display = 'block';
+    cardElement.style.opacity = '1';
+
+    if (!khatmahPlan) {
+        if (activeContent) activeContent.style.display = 'none';
+        if (noContent) noContent.style.display = 'block';
+        return;
+    }
+
+    if (activeContent) activeContent.style.display = 'block';
+    if (noContent) noContent.style.display = 'none';
 
     if (dailyVerseCountSpan) dailyVerseCountSpan.textContent = khatmahPlan.dailyTarget;
     if (khatmahDaysSpan) khatmahDaysSpan.textContent = khatmahPlan.days;
-    if (khatmahPlannerCard) khatmahPlannerCard.style.display = 'block';
 
     const currentKhatmahDayBadge = document.getElementById('currentKhatmahDayBadge');
     if (currentKhatmahDayBadge) currentKhatmahDayBadge.textContent = `اليوم ${khatmahPlan.currentDay}`;
-    if (khatmahStreakSpan) khatmahStreakSpan.innerHTML = `<i class="fas fa-fire"></i> ${khatmahPlan.streak || 0} يوم`;
+
+    if (khatmahStreakSpan) {
+        khatmahStreakSpan.innerHTML = `<i class="fas fa-fire" style="color:#ff4500;"></i> ستريك: ${khatmahPlan.streak || 0} يوم`;
+    }
 
     const progress = Math.min(100, ((khatmahPlan.currentDay - 1) / khatmahPlan.days) * 100);
     if (dailyProgress) dailyProgress.style.width = `${progress}%`;
-    if (dailyStatusText) dailyStatusText.textContent = `أكملت ${khatmahPlan.currentDay - 1} يوماً من أصل ${khatmahPlan.days}`;
+    if (dailyStatusText) dailyStatusText.textContent = `أكملتُ ورد ${khatmahPlan.currentDay - 1} يومًا من أصل ${khatmahPlan.days}`;
 }
+
+// Global helper for the new buttons
+window.showKhatmahPlanModal = function () {
+    const modal = document.getElementById('khatmahModal');
+    if (modal) modal.style.display = 'flex';
+};
 
 if (khatmahSettingsBtn) {
     khatmahSettingsBtn.addEventListener('click', () => {
@@ -2214,15 +2234,12 @@ if (khatmahSettingsBtn) {
 
 if (closeKhatmahModal) {
     closeKhatmahModal.addEventListener('click', () => {
-        khatmahModal.style.display = 'none';
+        const modal = document.getElementById('khatmahModal');
+        if (modal) modal.style.display = 'none';
     });
 }
 
-if (closePlannerBtn) {
-    closePlannerBtn.addEventListener('click', () => {
-        khatmahPlannerCard.style.display = 'none';
-    });
-}
+// Close logic removed as per user request to keep planner permanent
 
 document.querySelectorAll('.khatmah-opt').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2452,7 +2469,6 @@ function init() {
     setTimeout(checkResumePlayback, 1000);
 
     // Initialize Daily Verse & Adhkar
-    // Initialize Daily Verse & Adhkar
     initDailyVerse();
     setupAdhkarFeature();
 
@@ -2462,164 +2478,11 @@ function init() {
 
 // --- Adhkar System Logic ---
 
-function initDailyVerse() {
-    if (allVersesFlat.length === 0) flattenVerses();
-    if (allVersesFlat.length === 0) return;
 
-    // Pick a daily verse based on date hash
-    const today = new Date().toDateString();
-    let seed = 0;
-    for (let i = 0; i < today.length; i++) seed += today.charCodeAt(i);
-    const idx = seed % allVersesFlat.length;
-    const verse = allVersesFlat[idx];
 
-    const textEl = document.getElementById('dailyVerseText');
-    const refEl = document.getElementById('dailyVerseReference');
-    const container = document.getElementById('dailyVerseCard');
-
-    if (textEl && verse) {
-        textEl.textContent = verse.text;
-        if (refEl) refEl.textContent = `${verse.surahTitle} - آية ${verse.verseIndex + 1}`;
-
-        // Link to reading (Card Click)
-        if (container) {
-            container.onclick = () => {
-                showReadingPageList();
-                setTimeout(() => {
-                    openReadingSurah(songs[verse.surahIndex]);
-                    setTimeout(() => {
-                        const vEl = document.querySelector(`.verse-item[data-verse="${verse.verseIndex + 1}"]`);
-                        if (vEl) {
-                            vEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            vEl.classList.add('marked-read');
-                        }
-                    }, 500);
-                }, 100);
-            };
-        }
-
-        // Daily Verse Actions
-        const playBtn = document.getElementById('playDailyVerseBtn');
-        const tafsirBtn = document.getElementById('tafsirDailyVerseBtn');
-        const copyBtn = document.getElementById('copyDailyVerseBtn');
-
-        if (playBtn) {
-            playBtn.onclick = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                playSingleVerse(verse.surahIndex, verse.verseIndex);
-            };
-        }
-
-        if (tafsirBtn) {
-            tafsirBtn.onclick = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                openTafsir(songs[verse.surahIndex].id, verse.verseIndex + 1);
-            };
-        }
-
-        if (copyBtn) {
-            copyBtn.onclick = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const copyText = `${verse.text}\n[${verse.surahTitle}: ${verse.verseIndex + 1}]`;
-                if (navigator.clipboard) {
-                    navigator.clipboard.writeText(copyText).then(() => alert("تم نسخ الآية"));
-                } else {
-                    alert("النسخ غير مدعوم في هذا المتصفح");
-                }
-            };
-        }
-    }
-}
-
-function playSingleVerse(surahIdx, verseIdx) {
-    const song = songs[surahIdx];
-    if (!song || !song.lyrics) return;
-
-    currentSongIndex = surahIdx;
-    loadSong(song);
-
-    const start = parseFloat(song.lyrics[verseIdx].time);
-    const nextLyric = song.lyrics[verseIdx + 1];
-    const end = nextLyric ? parseFloat(nextLyric.time) : audioPlayer.duration || 999999;
-
-    audioPlayer.currentTime = start;
-    window.singleVerseMode = true; // Use global flag to prevent auto-next on 'ended'
-    audioPlayer.loop = false; // Ensure native looping is OFF
-    playTrack();
-    showPlayerPage();
-
-    // Auto-stop logic (Single Verse Mode)
-    if (window.verseEndListener) {
-        audioPlayer.removeEventListener('timeupdate', window.verseEndListener);
-    }
-
-    window.verseEndListener = () => {
-        // Stop if we reached the start of the next verse
-        // Use a small buffer (0.5s) to ensure we don't accidentally hit the end if it's the last verse
-        if (audioPlayer.currentTime >= end || (audioPlayer.duration > 0 && audioPlayer.currentTime >= audioPlayer.duration - 0.5)) {
-            audioPlayer.pause();
-            if (audioPlayer.currentTime >= audioPlayer.duration - 0.5) {
-                // If we are near the end, forcing pause might still trigger 'ended' in some browsers
-                // preventing default behavior via the flag is key.
-            }
-            audioPlayer.removeEventListener('timeupdate', window.verseEndListener);
-            window.verseEndListener = null;
-            // Optionally, reset to start of verse so they can play again?
-            // audioPlayer.currentTime = start; 
-        }
-    };
-
-    audioPlayer.addEventListener('timeupdate', window.verseEndListener);
-}
-
-function renderAdhkarCategories() {
-    const container = document.getElementById('adhkarCategories');
-    if (!container) return;
-
-    // Wait for data load
-    if (Object.keys(adhkarData).length === 0) {
-        setTimeout(renderAdhkarCategories, 500);
-        return;
-    }
-
-    container.innerHTML = '';
-
-    // 1. Tasbeeh Item (Manual)
-    const tasbeehDiv = document.createElement('div');
-    tasbeehDiv.className = 'dhikr-category-card';
-    tasbeehDiv.innerHTML = `
-        <div class="cat-icon"><i class="fas fa-fingerprint"></i></div>
-        <h3>السبحة الإلكترونية</h3>
-    `;
-    tasbeehDiv.onclick = () => openAdhkarCategory('tasbeeh');
-    container.appendChild(tasbeehDiv);
-
-    // 2. Dynamic Categories from JSON
-    Object.keys(adhkarData).forEach(key => {
-        const div = document.createElement('div');
-        div.className = 'dhikr-category-card';
-
-        let icon = 'fa-hands-praying';
-        if (key.includes('صباح')) icon = 'fa-sun';
-        else if (key.includes('مساء')) icon = 'fa-moon';
-        else if (key.includes('نوم')) icon = 'fa-bed';
-        else if (key.includes('مسجد')) icon = 'fa-mosque';
-
-        div.innerHTML = `
-            <div class="cat-icon"><i class="fas ${icon}"></i></div>
-            <h3>${key}</h3>
-        `;
-        div.onclick = () => openAdhkarCategory(key);
-        container.appendChild(div);
-    });
-}
 let tasbeehCount = 0;
 
 function setupAdhkarFeature() {
-    renderAdhkarCategories();
     const navAdhkar = document.getElementById('navAdhkar');
     const adhkarPage = document.getElementById('adhkarPage');
     const adhkarHome = document.getElementById('adhkarHome');
@@ -3288,79 +3151,18 @@ function toggleFullScreen() {
             document.exitFullscreen();
         }
     }
-}
 
-// --- Points & Rewards System (Fixing ReferenceErrors) ---
+    // --- Smart Assistant Settings Logic ---
+    const aiToggle = document.getElementById('aiToggle');
+    if (aiToggle) {
+        // Initialize toggle state from localStorage (default is true)
+        aiToggle.checked = localStorage.getItem('ai_enabled') !== 'false';
 
-/**
- * Main function to award points to the user
- * @param {number} points - Number of points to add
- * @param {string} reason - The action description
- */
-function awardPoints(points, reason) {
-    if (!points || points <= 0 || isNaN(points)) return;
-
-    console.log(`Awarding ${points} points for: ${reason}`);
-
-    // Update ScoreEngine if it exists
-    if (window.ScoreEngine && window.ScoreEngine.STORAGE_KEYS) {
-        const currentTotal = parseInt(localStorage.getItem(window.ScoreEngine.STORAGE_KEYS.TOTAL_SCORE) || '0');
-        localStorage.setItem(window.ScoreEngine.STORAGE_KEYS.TOTAL_SCORE, currentTotal + points);
-
-        // Update daily stats through engine
-        if (typeof window.ScoreEngine.updateDailyStats === 'function') {
-            window.ScoreEngine.updateDailyStats('reading', points); // Default to reading or handle type
-        }
-    } else {
-        // Fallback to simple key
-        const simpleTotal = parseInt(localStorage.getItem('user_total_points') || '0');
-        localStorage.setItem('user_total_points', simpleTotal + points);
+        // Handle toggle change
+        aiToggle.addEventListener('change', (e) => {
+            if (window.SmartCompanion) {
+                window.SmartCompanion.toggleAI(e.target.checked);
+            }
+        });
     }
-
-    // Show visual notification
-    showPointToast(points, reason);
-}
-
-/**
- * Shows a beautiful toast notification for points or messages
- */
-function showPointToast(points, reason) {
-    let container = document.getElementById('toast-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'toast-container';
-        document.body.appendChild(container);
-    }
-
-    const toast = document.createElement('div');
-    toast.className = 'point-toast';
-
-    let content = '';
-    if (points > 0) {
-        content = `<div class="toast-icon">✨</div>
-                   <div class="toast-body">
-                       <span class="toast-points">+${points}</span>
-                       <span class="toast-reason">${reason}</span>
-                   </div>`;
-    } else {
-        content = `<div class="toast-body">
-                       <span class="toast-reason">${reason}</span>
-                   </div>`;
-    }
-
-    toast.innerHTML = content;
-    container.appendChild(toast);
-
-    // Animate in
-    requestAnimationFrame(() => {
-        toast.style.transform = 'translateX(0)';
-        toast.style.opacity = '1';
-    });
-
-    // Auto remove
-    setTimeout(() => {
-        toast.style.transform = 'translateX(120%)';
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 500);
-    }, 4000);
 }

@@ -89,6 +89,18 @@ function setupPrayerFeature() {
         });
     });
 
+    // System Notification Toggle Persistence
+    const systemNotifToggle = document.getElementById('systemNotifToggle');
+    if (systemNotifToggle) {
+        // Sync with permission state and saved setting
+        const savedNotif = localStorage.getItem('systemNotifEnabled');
+        systemNotifToggle.checked = (Notification.permission === 'granted' && savedNotif !== 'false');
+
+        systemNotifToggle.addEventListener('change', (e) => {
+            localStorage.setItem('systemNotifEnabled', e.target.checked);
+        });
+    }
+
     // Custom Adhan Upload Handle
     const customAdhanBtn = document.getElementById('uploadAdhanBtn');
     const customAdhanInput = document.getElementById('customAdhanInput');
@@ -324,6 +336,44 @@ function highlightCurrentPrayer(times, now) {
     });
 }
 
+async function requestNotificationPermission() {
+    if (!("Notification" in window)) {
+        console.warn("هذا المتصفح لا يدعم التنبيهات");
+        return false;
+    }
+    if (Notification.permission === "granted") return true;
+    try {
+        const permission = await Notification.requestPermission();
+        return permission === "granted";
+    } catch (e) {
+        console.error("Error requesting permission", e);
+    }
+    return false;
+}
+
+function showNotificationSystem(title, options = {}) {
+    const defaultOptions = {
+        icon: 'favicon.png',
+        badge: 'favicon.png',
+        vibrate: [200, 100, 200],
+        ...options
+    };
+
+    // Try via Service Worker (Best for PWA)
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+            action: 'show-notification',
+            title: title,
+            options: defaultOptions
+        });
+    } else {
+        // Fallback to legacy Notification API
+        if (Notification.permission === "granted") {
+            new Notification(title, defaultOptions);
+        }
+    }
+}
+
 function playAdhan(prayerName) {
     const adhanEnabled = localStorage.getItem('adhanEnabled') === 'true';
     if (!adhanEnabled) return;
@@ -331,36 +381,30 @@ function playAdhan(prayerName) {
     // Check specific prayer setting
     if (prayerName) {
         const prayerSettings = JSON.parse(localStorage.getItem('prayerAdhanSettings') || '{}');
-        // Default to true if not set
-        if (prayerSettings[prayerName] === false) {
-            console.log(`Adhan for ${prayerName} is disabled by user.`);
-            return;
-        }
+        if (prayerSettings[prayerName] === false) return;
     }
 
     const adhanAudio = document.getElementById('adhanAudio');
     if (adhanAudio) {
-        // Use selected sound
         const selectedSound = localStorage.getItem('adhanSoundUrl');
         if (selectedSound === 'custom') {
             const customData = localStorage.getItem('customAdhanData');
-            if (customData) {
-                adhanAudio.src = customData;
-            } else {
-                // Fallback to Makkah if custom selected but no data
-                adhanAudio.src = "https://www.islamcan.com/adhan/sounds/adhan-from-makkah.mp3";
-            }
+            if (customData) adhanAudio.src = customData;
         } else if (selectedSound) {
             adhanAudio.src = selectedSound;
         }
 
-        adhanAudio.play().catch(e => console.warn("Audio play blocked by browser"));
+        // Play immediately
+        adhanAudio.play().catch(e => console.warn("Audio play blocked - needs user interaction once"));
 
-        // Show notification if possible
-        if ("Notification" in window && Notification.permission === "granted") {
-            const title = prayerName ? `حان الآن موعد أذان ${PRAYER_NAMES[prayerName]}` : "حان الآن موعد الأذان";
-            new Notification(title, { body: "حي على الصلاة.. حي على الفلاح" });
-        }
+        // Trigger Notification
+        const title = prayerName ? `حان الآن موعد أذان ${PRAYER_NAMES[prayerName]}` : "حان الآن موعد الأذان";
+        showNotificationSystem(title, {
+            body: "حي على الصلاة.. حي على الفلاح",
+            tag: 'adhan-notification',
+            renotify: true,
+            requireInteraction: true // Keep notification until user clicks
+        });
     }
 }
 

@@ -54,7 +54,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Handle messages from the main thread for explicit caching (download)
+// Handle messages from the main thread
 self.addEventListener('message', (event) => {
   if (event.data.action === 'download') {
     const url = event.data.url;
@@ -71,5 +71,29 @@ self.addEventListener('message', (event) => {
         });
       })
     );
+  } else if (event.data.action === 'show-notification') {
+    const { title, options } = event.data;
+    self.registration.showNotification(title, options);
   }
+});
+
+// Notification Click Event
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  // Open the app or focus the existing window
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      if (clientList.length > 0) {
+        let client = clientList[0];
+        for (let i = 0; i < clientList.length; i++) {
+          if (clientList[i].focused) {
+            client = clientList[i];
+          }
+        }
+        return client.focus();
+      }
+      return clients.openWindow('/');
+    })
+  );
 });
