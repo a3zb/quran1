@@ -192,8 +192,7 @@ function initTafsirTools() {
 
             } catch (err) {
                 console.error('Failed to copy!', err);
-                // Fallback
-                alert('تم التحديد، يمكنك النسخ (Ctrl+C)');
+                if (window.showPointToast) showPointToast(0, 'تم التحديد، يمكنك النسخ (Ctrl+C)');
             }
         });
     }
@@ -237,7 +236,7 @@ async function downloadCurrentTafsir() {
     const source = window.currentTafsirSource || 'moyassar';
     const slugs = TAFSIR_SLUGS[source];
     if (!slugs || slugs.length === 0) {
-        alert("هذا المصدر غير متاح للتحميل حالياً.");
+        if (window.showPointToast) showPointToast(0, "هذا المصدر غير متاح للتحميل حالياً.");
         return;
     }
 

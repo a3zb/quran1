@@ -78,68 +78,90 @@ window.SmartCompanion = {
         }
 
         // === 1. High Priority: Fasting Reminders (Sun & Wed Evening, Mon & Thu Morning) ===
-        if ((day === 0 || day === 3) && hour >= 18) { // Sun or Wed Evening for next day
-            const targetDay = day === 0 ? 'الاثنين' : 'الخميس';
-            suggestion = {
-                icon: '🌙',
-                title: `تذكير صيام ${targetDay}`,
-                text: `غداً يوم ${targetDay}، وهو يوم تُرفع فيه الأعمال. هل نويت الصيام؟`,
-                action: 'نويت الصيام',
-                actionFn: () => this.showFeedback('تقبل الله منك! 🤲')
-            };
-        } else if ((day === 1 || day === 4) && hour < 5) { // Mon or Thu Fajr
-            suggestion = {
-                icon: '🥣',
-                title: 'وقت السحور',
-                text: 'تسحروا فإن في السحور بركة. صياماً مقبولاً.',
-                action: 'نويت الصيام',
-                actionFn: () => this.showFeedback('تقبل الله صيامك')
-            };
-        }
+        const fastingKey = `fasting_confirmed_${now.toDateString()}`;
+        const fastingCount = parseInt(localStorage.getItem(`${fastingKey}_count`) || '0');
+        const fastingCooldown = parseInt(localStorage.getItem(`${fastingKey}_cooldown`) || '0');
 
-        // === 2. Time-Specific Suggestions ===
-        if (!suggestion) {
-            // Friday Kahf
-            if (day === 5 && !this.hasReadToday(18)) {
-                suggestion = {
-                    icon: '🕌',
-                    title: 'جمعة مباركة',
-                    text: 'نور ما بين الجمعتين. هل قرأت سورة الكهف؟',
-                    action: 'اقرأها الآن',
-                    actionFn: () => this.openSurah(18)
-                };
-            }
-            // Morning Adhkar (5 AM - 11 AM)
-            else if (hour >= 5 && hour < 11 && !this.hasDoneAdhkarToday('morning')) {
-                suggestion = {
-                    icon: '☀️',
-                    title: 'صباح الخير',
-                    text: 'ابدأ يومك بذكر الله. أذكار الصباح حفظ وتحصين.',
-                    action: 'أذكار الصباح',
-                    actionFn: () => this.openAdhkar('أذكار الصباح')
-                };
-            }
-            // Evening Adhkar (3 PM - 9 PM)
-            else if (hour >= 15 && hour < 21 && !this.hasDoneAdhkarToday('evening')) {
+        if ((day === 0 || day === 3) && hour >= 18) { // Sun or Wed Evening for next day
+            if (fastingCount < 2 && now.getTime() > fastingCooldown) {
+                const targetDay = day === 0 ? 'الاثنين' : 'الخميس';
                 suggestion = {
                     icon: '🌙',
-                    title: 'مساء الخير',
-                    text: 'أمسينـا وأمسى الملك لله. حان وقت أذكار المساء.',
-                    action: 'أذكار المساء',
-                    actionFn: () => this.openAdhkar('أذكار المساء')
+                    title: `تذكير صيام ${targetDay}`,
+                    text: `غداً يوم ${targetDay}، وهو يوم تُرفع فيه الأعمال. هل نويت الصيام؟`,
+                    action: 'نويت الصيام',
+                    actionFn: () => {
+                        const current = parseInt(localStorage.getItem(`${fastingKey}_count`) || '0');
+                        localStorage.setItem(`${fastingKey}_count`, (current + 1).toString());
+                        localStorage.setItem(`${fastingKey}_cooldown`, (Date.now() + 2 * 60 * 60 * 1000).toString());
+                        this.showFeedback('تقبل الله منك! 🤲');
+                    }
                 };
             }
-            // Late Night (Qiyam)
-            else if (hour >= 23 || hour < 4) {
-                // Randomize slightly so isn't always qiyam if valid
-                if (Math.random() > 0.3) {
+        } else if ((day === 1 || day === 4) && hour < 5) { // Mon or Thu Fajr
+            if (fastingCount < 2 && now.getTime() > fastingCooldown) {
+                suggestion = {
+                    icon: '🥣',
+                    title: 'وقت السحور',
+                    text: 'تسحروا فإن في السحور بركة. صياماً مقبولاً.',
+                    action: 'نويت الصيام',
+                    actionFn: () => {
+                        const current = parseInt(localStorage.getItem(`${fastingKey}_count`) || '0');
+                        localStorage.setItem(`${fastingKey}_count`, (current + 1).toString());
+                        localStorage.setItem(`${fastingKey}_cooldown`, (Date.now() + 2 * 60 * 60 * 1000).toString());
+                        this.showFeedback('تقبل الله صيامك');
+                    }
+                };
+            }
+        }
+
+        // === 2. Time-Specific Suggestions (Adhkar) ===
+        if (!suggestion) {
+            // Mixed Probability: Even if it's Dhikr time, 40% chance to show a Hadith instead to keep it fresh
+            const wantRandom = Math.random() < 0.4;
+
+            if (!wantRandom) {
+                // Friday Kahf
+                if (day === 5 && !this.hasReadToday(18)) {
                     suggestion = {
-                        icon: '✨',
-                        title: 'سهام الليل',
-                        text: 'ركعة في جوف الليل تضيء القبر. هل لك في الوتر؟',
-                        action: 'سأصلي',
-                        actionFn: () => this.showFeedback('تقبل الله منك')
+                        icon: '🕌',
+                        title: 'جمعة مباركة',
+                        text: 'نور ما بين الجمعتين. هل قرأت سورة الكهف؟',
+                        action: 'اقرأها الآن',
+                        actionFn: () => this.openSurah(18)
                     };
+                }
+                // Morning Adhkar (5 AM - 11 AM)
+                else if (hour >= 5 && hour < 11 && !this.hasDoneAdhkarToday('morning')) {
+                    suggestion = {
+                        icon: '☀️',
+                        title: 'صباح الخير',
+                        text: 'ابدأ يومك بذكر الله. أذكار الصباح حفظ وتحصين.',
+                        action: 'أذكار الصباح',
+                        actionFn: () => this.openAdhkar('أذكار الصباح')
+                    };
+                }
+                // Evening Adhkar (3 PM - 9 PM)
+                else if (hour >= 15 && hour < 21 && !this.hasDoneAdhkarToday('evening')) {
+                    suggestion = {
+                        icon: '🌙',
+                        title: 'مساء الخير',
+                        text: 'أمسينـا وأمسى الملك لله. حان وقت أذكار المساء.',
+                        action: 'أذكار المساء',
+                        actionFn: () => this.openAdhkar('أذكار المساء')
+                    };
+                }
+                // Late Night (Qiyam)
+                else if (hour >= 23 || hour < 4) {
+                    if (Math.random() > 0.4) {
+                        suggestion = {
+                            icon: '✨',
+                            title: 'سهام الليل',
+                            text: 'ركعة في جوف الليل تضيء القبر. هل لك في الوتر؟',
+                            action: 'سأصلي',
+                            actionFn: () => this.showFeedback('تقبل الله منك')
+                        };
+                    }
                 }
             }
         }
@@ -173,7 +195,24 @@ window.SmartCompanion = {
             { icon: '🤲', title: 'دعاء', text: 'رَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً وَفِي الآخِرَةِ حَسَنَةً وَقِنَا عَذَابَ النَّارِ.', action: 'آمين', actionFn: () => this.showFeedback('تقبل الله دعاءك') },
             { icon: '❤', title: 'الاستغفار', text: 'من لزم الاستغفار جعل الله له من كل هم فرجاً.', action: 'استغفر الله', actionFn: () => this.showFeedback('أستغفر الله العظيم') },
             { icon: '🤎', title: 'دعاء', text: 'اللهم لك سجدت وبك آمنت ولك أسلمت، سجد وجهي للذي خلقه وصوره وشق سمعه وبصره تبارك الله أحسن الخالقين', action: 'دعاء السجود', actionFn: () => this.showFeedback('تقبل الله دعاءك') },
-            { icon: '🙏', title: 'دعاء', text: 'اللهم إني أسألك الفردوس الأعلى من الجنّة بلا حساب ولا سابق عذاب', action: ' آمين', actionFn: () => this.showFeedback('تقبل الله دعاءك') }
+            { icon: '🙏', title: 'دعاء', text: 'اللهم إني أسألك الفردوس الأعلى من الجنّة بلا حساب ولا سابق عذاب', action: ' آمين', actionFn: () => this.showFeedback('تقبل الله دعاءك') },
+            { icon: '👔', title: 'سنة في اللباس', text: 'قال ﷺ: "مَا أَسْفَلَ مِنَ الْكَعْبَيْنِ مِنَ الإِزَارِ فَفِي النَّارِ".', action: 'صلى الله عليه وسلم', actionFn: () => this.showFeedback('عليك صلوات الله وسلامه') },
+            { icon: '🛡️', title: 'حفظ وتحصين', text: 'قال ﷺ: "من قال: بسم الله الذي لا يضر مع اسمه شيء في الأرض ولا في السماء وهو السميع العليم (3 مرات) لم يضره شيء".', action: 'ذكرتها الآن', actionFn: () => this.showFeedback('حفِظك الله وكفاك شر كل سوء') },
+            { icon: '🕌', title: 'عند سماع الأذان', text: 'قال ﷺ: "من قال حين يسمع المؤذن: وأنا أشهد أن لا إله إلا الله وحده لا شريك له وأن محمداً عبده ورسوله، رضيت بالله رباً وبمحمد رسولاً وبالإسلام ديناً؛ غُفر له".', action: 'ثبتنا الله على الإسلام', actionFn: () => this.showFeedback('غفر الله لنا ولك ولوالدينا') },
+            { icon: '💤', title: 'سنة النوم', text: 'كان النبي ﷺ إذا أوى إلى فراشه وضع يده تحت خده وقال: "اللَّهُمَّ بِاسْمِكَ أَمُوتُ وَأَحْيَا".', action: 'استودعتك الله', actionFn: () => this.showFeedback('نومـاً هنـيئاً في حفظ الله') },
+            { icon: '🌅', title: 'سنة الاستيقاظ', text: 'كان النبي ﷺ إذا استيقظ قال: "الْحَمْدُ لِلَّهِ الَّذِي أَحْيَانَا بَعْدَ مَا أَمَاتَنَا وَإِلَيْهِ النُّشُورُ".', action: 'الحمد لله', actionFn: () => this.showFeedback('صباحك طاعة ورضا') },
+            { icon: '🧔', title: 'سنة الفطرة', text: 'قال ﷺ: "خَالِفُوا الْمُشْرِكِينَ؛ أَحْفُوا الشَّوَارِبَ وَأَوْفُوا اللِّحَى".', action: 'صلى الله عليه وسلم', actionFn: () => this.showFeedback('إحياء السنة حياة للقلب') },
+            { icon: '🤍', title: 'التوبة والاستغفار', text: 'قال ﷺ: "يا أيها الناس توبوا إلى الله، فإني أتوب في اليوم إليه مائة مرة".', action: 'أستغفر الله وأتوب إليه', actionFn: () => this.showFeedback('غفر الله ذنبك وشرح صدرك') },
+            { icon: '💖', title: 'كمال الإيمان', text: 'قال ﷺ: "لا يُؤْمِنُ أَحَدُكُمْ حَتَّى أَكُونَ أَحَبَّ إِلَيْهِ مِنْ وَلَدِهِ وَوَالِدِهِ وَالنَّاسِ أَجْمَعِينَ".', action: 'بأبي أنت وأمي يا رسول الله', actionFn: () => this.showFeedback('رزقنا الله وإياك شفاعته ومرافقته في الجنة') },
+            { icon: '🌙', title: 'سنة بعد الوتر', text: 'كان ﷺ يقول بعد صلاة الوتر "سُبْحَانَ الْمَلِكِ الْقُدُّوسِ" ثلاثاً، ويطيل في الثالثة.', action: 'ذكرتها الآن', actionFn: () => this.showFeedback('تقبل الله منك صالح الأعمال') },
+            { icon: '📿', title: 'سنة التنويع في الذكر', text: 'يشرع التنويع في أذكار دبر الصلاة؛ مثل التسبيح والتحميد والتكبير (33 مرّة) وختم المئة بـ "لا إله إلا الله".', action: 'سأطبقها', actionFn: () => this.showFeedback('أحسنت! التنويع يحيي القلب') },
+            { icon: '✨', title: 'من صيغ التسبيح', text: 'من السنة التسبيح والتحميد والتكبير (33 مرّة) وإتمام المئة بالتكبير (أي 34 تكبيرة).', action: 'ذكرتها الآن', actionFn: () => this.showFeedback('بارك الله في ذكرك') },
+            { icon: '⚖️', title: 'صيغة خفيفة', text: 'من صيغ الذكر بعد الصلاة: قول (سبحان الله، والحمد لله، ولا إله إلا الله، والله أكبر) 25 مرة، ومجموعها 100.', action: 'سأفعل ذلك', actionFn: () => this.showFeedback('أثقلك الله بها في ميزانك') },
+            { icon: '⭐', title: 'صيغة مختصرة', text: 'إذا كنت مستعجلاً، يمكنك قول (سبحان الله 10، الحمد لله 10، الله أكبر 10) دبر كل صلاة مكتوبة.', action: 'سأداوم عليها', actionFn: () => this.showFeedback('قليل دائم خير من كثير منقطع') },
+            { icon: '✨', title: 'كفارة المجلس', text: 'قال ﷺ: "من قال قبل أن يقوم من مجلسه: سبحانك اللهم وبحمدك، أشهد أن لا إله إلا أنت أستغفرك وأتوب إليك؛ إلا غُفر له ما كان في مجلسه ذلك".', action: 'ذكرتها الآن', actionFn: () => this.showFeedback('غفر الله لنا ولك ولوالدينا') },
+            { icon: '❄️', title: 'دعاء التطهر', text: 'قال ﷺ: "اللهم نقني من الخطايا كما ينقى الثوب الأبيض من الدنس، اللهم اغسلني من خطاياي بالثلج والماء والبرد".', action: 'آمين', actionFn: () => this.showFeedback('تقبل الله دعاءك وطهر قلبك') },
+            { icon: '🕌', title: 'صلاة التوبة', text: 'قال ﷺ: "ما من عبدٍ يذنب ذنباً، فيحسن الطهور، ثم يقوم فيصلي ركعتين، ثم يستغفر الله، إلا غفر الله له".', action: 'استغفر الله', actionFn: () => this.showFeedback('غفر الله لنا ولك ولجميع المسلمين') },
+            { icon: '🤲', title: 'دعاء للمؤمنين', text: 'قال ﷺ: "مَنِ اسْتَغْفَرَ لِلْمُؤْمِنِينَ وَالْمُؤْمِنَاتِ، كَتَبَ اللَّهُ لَهُ بِكُلِّ مُؤْمِنٍ وَمُؤْمِنَةٍ حَسَنَةً".', action: 'اللهم اغفر لهم جميعاً', actionFn: () => this.showFeedback('لك بكل واحدٍ منهم حسنة بإذن الله') }
         ];
         return benefits[Math.floor(Math.random() * benefits.length)];
     },
@@ -212,18 +251,22 @@ window.SmartCompanion = {
         }
 
         container.innerHTML = `
-            <div class="ai-card glass-card">
-                <div class="ai-icon">${data.icon}</div>
-                <div class="ai-content">
-                    <h4>${data.title}</h4>
-                    <p>${data.text}</p>
-                    <button class="ai-action-btn" onclick="window.SmartCompanion.handleAction()">${data.action}</button>
+            <div class="ai-card">
+                <div class="ai-header-flex">
+                    <div class="ai-icon">${data.icon}</div>
+                    <div class="ai-content">
+                        <h4>${data.title}</h4>
+                        <p>${data.text}</p>
+                    </div>
                 </div>
-                <div class="ai-close" onclick="window.SmartCompanion.dismiss()" ontouchstart="window.SmartCompanion.dismiss()">×</div>
+                <button class="ai-action-btn" onclick="window.SmartCompanion.handleAction()">${data.action}</button>
+                <div class="ai-close" onclick="window.SmartCompanion.dismiss()"><i class="fas fa-times"></i></div>
             </div>
         `;
 
         this.currentAction = data.actionFn;
+        // Trigger reflow
+        container.offsetHeight;
         container.classList.add('visible');
         localStorage.setItem('ai_last_shown', now.toString()); // Update timestamp
 
@@ -249,10 +292,10 @@ window.SmartCompanion = {
     },
 
     showFeedback(message) {
-        if (typeof showPointToast === 'function') {
-            showPointToast(0, message);
+        if (window.showPointToast) {
+            window.showPointToast(0, message);
         } else {
-            alert(message);
+            console.log('AI Feedback:', message);
         }
     },
 

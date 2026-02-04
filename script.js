@@ -142,12 +142,16 @@ loadAdhkarData();
 
 
 
-// Helper to check if a URL is cached
+// Helper to check if a URL is cached (Checks multiple caches)
 async function isUrlCached(url) {
     if (!('caches' in window)) return false;
-    const cache = await caches.open('quran-media-cache');
-    const response = await cache.match(url);
-    return !!response;
+    const cacheNames = ['quran-media-cache', 'quran-library-v2'];
+    for (const name of cacheNames) {
+        const cache = await caches.open(name);
+        const response = await cache.match(url);
+        if (response) return true;
+    }
+    return false;
 }
 
 // Function to update the download button UI based on cache status
@@ -159,13 +163,15 @@ async function updateDownloadButtonUI() {
     if (!currentSong || !currentSong.audioSrc) return;
 
     const cached = await isUrlCached(currentSong.audioSrc);
+
+    // Always use the same download icon for uniform look
+    downloadBtn.innerHTML = '<i class="fas fa-download"></i>';
+    downloadBtn.style.color = ""; // Match other buttons exactly
+
     if (cached) {
-        downloadBtn.innerHTML = '<i class="fas fa-check-circle"></i> تم التحميل';
-        downloadBtn.classList.add('download-success');
-        downloadBtn.title = "موجود في ذاكرة الأوفلاين";
+        downloadBtn.title = "هذه السورة محملة بالفعل";
+        // Optionally add a subtle state class if needed later, but keep color/icon same as requested
     } else {
-        downloadBtn.innerHTML = '<i class="fas fa-download"></i> تحميل للأوفلاين';
-        downloadBtn.classList.remove('download-success');
         downloadBtn.title = "تحميل للاستماع بدون إنترنت";
     }
 }
@@ -182,13 +188,16 @@ if ('serviceWorker' in navigator) {
         }
     });
 }
-// Background Pre-caching for Offline Mode (Lightweight: Hadiths & Essential Tafsir)
+// Background Pre-caching for Offline Mode (Improved Robustness)
 async function preCacheOfflineContent() {
     if (!('serviceWorker' in navigator)) return;
 
-    console.log("🌙 Starting background pre-cache for offline use...");
+    console.log("🌙 Starting robust background pre-cache...");
 
-    // 1. Pre-cache all Hadith Books
+    // 1. Core Data Files
+    const coreData = ['/adkar.json', '/data.js', '/favicon.png'];
+
+    // 2. Pre-cache all Hadith Books from config in hadiths_logic.js if possible
     const hadithBooks = [
         'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-nawawi.json',
         'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-bukhari.json',
@@ -199,30 +208,39 @@ async function preCacheOfflineContent() {
         'https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-ibnmajah.json'
     ];
 
-    // 2. Pre-cache basic Tafsir (e.g., Jalalayn - small and complete)
+    // 3. Essential Tafsirs
     const EssentialTafsirs = ['ar-tafsir-al-jalalayn', 'ar-tafsir-muyassar'];
-
-    const urlsToCache = [...hadithBooks];
+    const tafsirUrls = [];
     for (const slug of EssentialTafsirs) {
-        for (let i = 1; i <= 15; i++) { // Increase to 15 surahs
-            urlsToCache.push(`https://cdn.jsdelivr.net/gh/spa5k/tafsir_api@main/tafsir/${slug}/${i}.json`);
+        for (let i = 1; i <= 20; i++) { // Increase to 20 surahs (including most common short ones)
+            tafsirUrls.push(`https://cdn.jsdelivr.net/gh/spa5k/tafsir_api@main/tafsir/${slug}/${i}.json`);
         }
     }
 
-    // Process in small batches
-    for (let i = 0; i < urlsToCache.length; i += 3) {
-        const batch = urlsToCache.slice(i, i + 3);
-        await Promise.allSettled(batch.map(url => fetch(url, { mode: 'no-cors' }).catch(() => { })));
-        await new Promise(r => setTimeout(r, 1500));
+    const allUrls = [...coreData, ...hadithBooks, ...tafsirUrls];
+
+    // Process with better parallel handling
+    const batchSize = 5;
+    for (let i = 0; i < allUrls.length; i += batchSize) {
+        const batch = allUrls.slice(i, i + batchSize);
+        await Promise.allSettled(batch.map(async url => {
+            const cached = await isUrlCached(url);
+            if (!cached) {
+                // Fetch and let Service Worker store it
+                return fetch(url, { mode: 'no-cors' }).catch(() => { });
+            }
+        }));
+        // Small delay to prevent network saturation
+        if (i % 15 === 0) await new Promise(r => setTimeout(r, 800));
     }
 
-    console.log("✅ Background text pre-cache complete.");
+    console.log("✅ Background text pre-cache verified.");
 }
 
 // Master Background Sync: Downloads everything (Audio + Hadith + Tafsir)
 async function startMasterOfflineSync() {
     if (!('serviceWorker' in navigator)) {
-        alert("متصفحك لا يدعم نظام الأوفلاين حالياً.");
+        if (window.showPointToast) showPointToast(0, "متصفحك لا يدعم نظام الأوفلاين حالياً.");
         return;
     }
 
@@ -230,6 +248,13 @@ async function startMasterOfflineSync() {
     const wrapper = document.getElementById('masterSyncProgressWrapper');
     const progressBar = document.getElementById('masterSyncProgressBar');
     const statusText = document.getElementById('masterSyncStatus');
+
+    // Check if already completed and user just clicked again
+    if (localStorage.getItem('master_sync_complete') === 'true') {
+        if (!confirm("لقد قمت بتحميل المصحف كاملاً بالفعل. هل تريد التحقق من الملفات وإعادة تحميل الناقص منها؟")) {
+            return;
+        }
+    }
 
     if (!confirm("هل تريد تحميل المصحف كاملاً (كل السور) مع الأحاديث والتفاسير للاستخدام بدون إنترنت؟ سيتم التحميل في الخلفية.")) {
         return;
@@ -243,32 +268,45 @@ async function startMasterOfflineSync() {
     // 1. Pre-cache basic text data
     await preCacheOfflineContent();
 
-    // 2. Download All Surahs Audio (Sequential in batches)
-    const totalSongs = songs.length;
+    // 2. Download Media Assets (Sequential batches for stability)
+    const totalItems = songs.length;
     let completed = 0;
 
-    for (let i = 0; i < totalSongs; i++) {
+    for (let i = 0; i < totalItems; i++) {
         const song = songs[i];
-        if (song.audioSrc) {
-            statusText.textContent = `جاري تحميل سورة ${song.title}...`;
+        const assets = [];
+        if (song.audioSrc) assets.push(song.audioSrc);
+        if (song.videoBgSrc) assets.push(song.videoBgSrc);
 
-            const isCached = await isUrlCached(song.audioSrc);
+        statusText.textContent = `جاري تحميل سورة ${song.title} ومحتوياتها...`;
+
+        for (const url of assets) {
+            const isCached = await isUrlCached(url);
             if (!isCached) {
                 try {
-                    await fetch(song.audioSrc, { mode: 'no-cors' });
-                } catch (e) { console.warn(`Failed to sync ${song.title}`, e); }
+                    // Fetching with mode no-cors triggers the SW's cache-first/network-fallback+put logic
+                    // We don't need to read the blob here as the SW clone() handles it, 
+                    // but we do want to wait slightly for headers to be processed.
+                    const response = await fetch(url, { mode: 'no-cors' });
+                    // Small delay to let stream finish if browser optimizations allow
+                    await new Promise(r => setTimeout(r, 50));
+                } catch (e) {
+                    console.warn(`Failed to sync asset for ${song.title}`, e);
+                }
             }
-
-            completed++;
-            const percent = Math.round((completed / totalSongs) * 100);
-            progressBar.style.width = `${percent}%`;
-
-            if (i % 3 === 0) await new Promise(r => setTimeout(r, 1000));
         }
+
+        completed++;
+        const percent = Math.round((completed / totalItems) * 100);
+        progressBar.style.width = `${percent}%`;
+
+        // Batch control to prevent crashing the browser's network stack
+        if (i % 2 === 0) await new Promise(r => setTimeout(r, 300));
     }
 
     statusText.textContent = "✅ اكتمل التحميل! المصحف متاح أوفلاين.";
     statusText.style.color = "#4caf50";
+    localStorage.setItem('master_sync_complete', 'true');
 
     if (typeof showPointToast === 'function') {
         showPointToast(100, "تم تحميل التطبيق كاملاً بنجاح! يمكنك الآن استخدامه في أي مكان بدون إنترنت.");
@@ -279,6 +317,8 @@ async function startMasterOfflineSync() {
         startBtn.style.display = 'flex';
         startBtn.innerHTML = '<i class="fas fa-check-circle"></i> تم التحميل بنجاح';
         startBtn.style.borderColor = '#4caf50';
+        startBtn.style.background = 'rgba(76, 175, 80, 0.1)';
+        startBtn.style.color = '#4caf50';
     }, 5000);
 }
 
@@ -395,7 +435,59 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
         navigateTo('homePage');
     }
+
+    // Restore Verse of the Day
+    initDailyVerse();
 });
+
+async function initDailyVerse() {
+    const container = document.getElementById('dailyVerseContainer');
+    const textEl = document.getElementById('dailyVerseText');
+    const sourceEl = document.getElementById('dailyVerseSource');
+    const hijriEl = document.getElementById('dailyDateHijri');
+    if (!container || !textEl || !sourceEl) return;
+
+    if (allVersesFlat.length === 0) flattenVerses();
+    if (allVersesFlat.length === 0) return;
+
+    const randomIndex = Math.floor(Math.random() * allVersesFlat.length);
+    const verse = allVersesFlat[randomIndex];
+
+    textEl.textContent = verse.text;
+    sourceEl.textContent = `سورة ${verse.surahTitle} - آية ${verse.verseIndex + 1}`;
+    container.style.display = 'block';
+
+    // Update Hijri Date Safely in background
+    try {
+        const now = new Date();
+        const resp = await fetch(`https://api.aladhan.com/v1/gToH/${now.getDate()}-${now.getMonth() + 1}-${now.getFullYear()}`);
+        const hijriData = await resp.json();
+        if (hijriData.status === 'OK' && hijriEl) {
+            const h = hijriData.data.hijri;
+            hijriEl.textContent = `${h.day} ${h.month.ar} ${h.year} هـ`;
+        }
+    } catch (e) {
+        console.warn("Could not update Hijri date (offline)", e);
+    }
+
+    // Button handlers
+    document.getElementById('playDailyVerseBtn').onclick = (e) => {
+        e.stopPropagation();
+        currentSongIndex = verse.surahIndex;
+        loadSong(songs[currentSongIndex]);
+        playTrack();
+        showPlayerPage();
+    };
+    document.getElementById('tafsirDailyVerseBtn').onclick = (e) => {
+        e.stopPropagation();
+        openTafsir(songs[verse.surahIndex].id, verse.verseIndex + 1);
+    };
+    document.getElementById('copyDailyVerseBtn').onclick = (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(`${verse.text} [سورة ${verse.surahTitle}: ${verse.verseIndex + 1}]`);
+        if (window.showPointToast) showPointToast(0, "تم نسخ الآية الكريمة");
+    };
+}
 
 function hideAllPages() {
     document.querySelectorAll('.page').forEach(p => {
@@ -438,7 +530,17 @@ function showReadingPageList() {
     navigateTo('readingPage');
     if (readingListView) readingListView.style.display = 'block';
     if (readingDetailView) readingDetailView.style.display = 'none';
-    renderReadingSurahList(songs);
+
+    // Safety check for songs
+    if (typeof songs !== 'undefined' && Array.isArray(songs) && songs.length > 0) {
+        renderReadingSurahList(songs);
+    } else {
+        console.warn("Songs data not ready yet, trying again in 500ms");
+        setTimeout(() => {
+            if (typeof songs !== 'undefined') renderReadingSurahList(songs);
+        }, 500);
+    }
+
     updateKhatmahUI(); // Ensure planner state is reflected
 }
 
@@ -479,9 +581,14 @@ if (readingSearchInput) {
     readingSearchInput.addEventListener('input', (e) => {
         const term = e.target.value.trim();
         if (!term) {
+            readingSurahListElement.classList.remove('searching-active');
+            const planner = document.getElementById('khatmahPlanner');
+            if (planner) planner.style.display = 'block';
             renderReadingSurahList(songs);
             return;
         }
+        const planner = document.getElementById('khatmahPlanner');
+        if (planner) planner.style.display = 'none';
 
         const regex = buildArabicDiacriticInsensitiveRegex(term);
         const results = [];
@@ -517,6 +624,7 @@ if (readingSearchInput) {
 
 function renderReadingSearchResults(results, term) {
     readingSurahListElement.innerHTML = '';
+    readingSurahListElement.classList.add('searching-active');
 
     if (results.length === 0) {
         readingSurahListElement.innerHTML = '<li class="no-results">لا توجد نتائج مطابقة لبحثك</li>';
@@ -536,8 +644,7 @@ function renderReadingSearchResults(results, term) {
         if (item.type === 'surah') {
             const surah = item.data;
             li.innerHTML = `
-                <img src="${surah.albumArtUrl || 'favicon.png'}" alt="${surah.title}" class="song-art-list">
-                <div class="song-info-list">
+                <div class="song-info-list" style="text-align: right; width: 100%;">
                     <h3>${surah.title}</h3>
                     <p>${surah.lyrics ? surah.lyrics.length : 0} آية</p>
                 </div>
@@ -546,13 +653,13 @@ function renderReadingSearchResults(results, term) {
         } else {
             const surah = item.surah;
             // Highlight match in preview
-            let highlightedText = item.text.replace(new RegExp(`(${term})`, 'gi'), '<mark>$1</mark>');
-            // If regex was complex, we just use the simple highlight or leave as is
+            const safeTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            let highlightedText = item.text.replace(new RegExp(`(${safeTerm})`, 'gi'), '<mark>$1</mark>');
 
             li.innerHTML = `
-                <div class="song-info-list" style="padding-right: 15px;">
-                    <h3 style="font-size: 0.9rem; opacity: 0.8;">${surah.title} - آية ${item.verseNum}</h3>
-                    <p class="search-verse-preview" style="font-family: 'Amiri', serif; color: #fff; font-size: 1.1rem; line-height: 1.6;">${item.text}</p>
+                <div class="song-info-list" style="text-align: right; width: 100%;">
+                    <h3 style="font-size: 0.95rem; color: #a855f7; margin-bottom: 8px;">${surah.title} - آية ${item.verseNum}</h3>
+                    <p class="search-verse-preview" style="font-family: 'Amiri', serif; color: #fff; font-size: 1.2rem; line-height: 1.8;">${highlightedText}</p>
                 </div>
             `;
             li.onclick = () => openReadingSurah(surah, item.verseNum);
@@ -2052,27 +2159,72 @@ if (favoriteSurahBtn) {
 
 // --- Dua al-Khatmah Logic ---
 const duaKhatmahBtn = document.getElementById('duaKhatmahBtn');
-if (duaKhatmahBtn) {
-    duaKhatmahBtn.addEventListener('click', () => {
-        // We can either play a specific audio or show a text modal
-        // For now, let's play a famous Dua audio or just alert with text
-        const duaAudioUrl = "https://ia801002.us.archive.org/21/items/dua-khatm-quran/dua.mp3"; // Example placeholder
 
-        // Temporarily load this "virtual" song
-        const duaSong = {
-            id: 999,
-            title: "دعاء ختم القرآن الكريم",
-            artist: "الشيخ عبد الرحمن السديس",
-            albumArtUrl: "https://placehold.co/200x200/3a3a4e/e0e0e0?text=Dua",
-            audioSrc: duaAudioUrl,
-            lyrics: [{ time: 0, text: "اللهم ارحمني بالقرآن واجعله لي إماما ونورا وهدى ورحمة" }]
-        };
+const DUA_KHATMAH_CONTENT = [
+    "اللهم ارحمني بالقرآن واجعله لي إماما ونورا وهدى ورحمة",
+    "اللهم ذكرني منه ما نسيت وعلمني منه ما جهلت وارزقني تلاوته آناء الليل وأطراف النهار واجعله لي حجة يا رب العالمين",
+    "اللهم أصلح لي ديني الذي هو عصمة أمري وأصلح لي دنياي التي فيها معاشي وأصلح لي آخرتي التي فيها معادي",
+    "واجعل الحياة زيادة لي في كل خير واجعل الموت راحة لي من كل شر",
+    "اللهم اجعل خير عمري آخره وخير عملي خواتمه وخير أيامي يوم ألقاك فيه",
+    "اللهم إني أسألك عيشة هنية وميتة سوية ومردا غير مخز ولا فاضح",
+    "اللهم إني أسألك خير المسألة وخير الدعاء وخير النجاح وخير العلم وخير العمل وخير الثواب وخير الحياة وخير الممات",
+    "وثبتني وثقل موازيني وحقق إيماني وارفع درجتي وتقبل صلاتي واغفر خطيئاتي وأسألك العلا من الجنة",
+    "اللهم إني أسألك موجبات رحمتك وعزائم مغفرتك والسلامة من كل إثم والغنيمة من كل بر والفوز بالجنة والنجاة من النار",
+    "اللهم أحسن عاقبتنا في الأمور كلها وأجرنا من خزي الدنيا وعذاب الآخرة",
+    "اللهم اقسم لنا من خشيتك ما تحول به بيننا وبين معصيتك ومن طاعتك ما تبلغنا بها جنتك ومن اليقين ما تهون به علينا مصائب الدنيا",
+    "ومتعنا بأسماعنا وأبصارنا وقوتنا ما أحييتنا واجعله الوارث منا واجعل ثأرنا على من ظلمنا وانصرنا على من عادانا ولا تجعل مصيبتنا في ديننا ولا تجعل الدنيا أكبر همنا ولا مبلغ علمنا ولا تسلط علينا من لا يرحمنا",
+    "اللهم لا تدع لنا ذنبا إلا غفرته ولا هما إلا فرجته ولا دينا إلا قضيته ولا حاجة من حوائج الدنيا والآخرة إلا قضيتها يا أرحم الراحمين",
+    "ربنا آتنا في الدنيا حسنة وفي الآخرة حسنة وقنا عذاب النار",
+    "وصلى الله على نبينا محمد وعلى آله وأصحابه الأخيار وسلم تسليما كثيرا"
+];
 
-        loadSong(duaSong);
-        playTrack();
-        showPlayerPage();
+function openDuaReading() {
+    readingListView.style.display = 'none';
+    readingDetailView.style.display = 'block';
+    readingSurahTitle.textContent = "دعاء ختم القرآن الكريم";
+    readingContent.innerHTML = '';
+
+    const container = document.createElement('div');
+    container.className = 'dua-reading-container';
+    container.style.padding = '20px';
+    container.style.textAlign = 'center';
+
+    DUA_KHATMAH_CONTENT.forEach((line, idx) => {
+        const p = document.createElement('p');
+        p.className = 'verse-text reading-text';
+        p.style.marginBottom = '20px';
+        p.style.lineHeight = '2';
+        p.textContent = line;
+        container.appendChild(p);
     });
+
+    readingContent.appendChild(container);
+
+    // Add back button at bottom
+    const navDiv = document.createElement('div');
+    navDiv.className = 'reading-nav-buttons';
+    navDiv.style.cssText = 'display:flex; justify-content:center; margin-top:30px; padding:20px;';
+    const backBtn = document.createElement('button');
+    backBtn.className = 'secondary-btn';
+    backBtn.innerText = 'العودة للقائمة';
+    backBtn.onclick = () => {
+        readingDetailView.style.display = 'none';
+        readingListView.style.display = 'block';
+    };
+    navDiv.appendChild(backBtn);
+    readingContent.appendChild(navDiv);
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
+if (duaKhatmahBtn) {
+    duaKhatmahBtn.onclick = openDuaReading;
+}
+const duaKhatmahBtnStatic = document.getElementById('duaKhatmahBtnStatic');
+if (duaKhatmahBtnStatic) {
+    duaKhatmahBtnStatic.onclick = openDuaReading;
+}
+// --- Side Menu Logic ---
 
 // Event Listeners for Side Menu
 if (menuBtn) menuBtn.addEventListener('click', openSidebar);
@@ -2804,6 +2956,34 @@ function openAdhkarCategory(type) {
         } else {
             renderAdhkarList(data, list);
         }
+
+        // Initialize progress bar
+        setTimeout(() => updateAdhkarProgress(), 100);
+    }
+}
+
+function updateAdhkarProgress() {
+    const list = document.getElementById('adhkarList');
+    const items = list.querySelectorAll('.dhikr-count-badge');
+    if (items.length === 0) return;
+
+    const completed = Array.from(items).filter(el => el.textContent.includes('تم')).length;
+    const total = items.length;
+    const percent = Math.round((completed / total) * 100);
+
+    const progressBar = document.getElementById('adhkarProgressBar');
+    const percentEl = document.getElementById('adhkarProgressPercent');
+    const statusEl = document.getElementById('adhkarProgressStatus');
+
+    if (progressBar) progressBar.style.width = `${percent}%`;
+    if (percentEl) percentEl.textContent = `${percent}%`;
+    if (statusEl) statusEl.textContent = `اكتمل ${completed} من ${total}`;
+
+    // Update bar color based on progress
+    if (percent === 100) {
+        if (progressBar) progressBar.style.background = 'linear-gradient(90deg, #22c55e, #16a34a)';
+    } else {
+        if (progressBar) progressBar.style.background = 'linear-gradient(90deg, #a855f7, #ec4899)';
     }
 }
 
@@ -2831,6 +3011,8 @@ function renderAdhkarList(data, container) {
 
 function decrementDhikr(el, max) {
     const span = el.querySelector('.count-val');
+    if (!span) return; // Already completed (shows "تم")
+
     let current = parseInt(span.textContent);
     if (current > 0) {
         current--;
@@ -2844,6 +3026,9 @@ function decrementDhikr(el, max) {
             // Points Hook!
             checkAdhkarCategoryCompletion();
         }
+
+        // Update global progress bar
+        updateAdhkarProgress();
     }
 }
 
@@ -2939,94 +3124,7 @@ function parseTafsirText(text) {
 }
 
 
-// --- Verse of the Day Logic (Smart & Contextual) ---
-async function initDailyVerse() {
-    const dailyVerseContainer = document.getElementById('dailyVerseContainer');
-    const dailyVerseText = document.getElementById('dailyVerseText');
-    const dailyVerseSource = document.getElementById('dailyVerseSource');
-    const dailyDateHijri = document.getElementById('dailyDateHijri'); // Keep this for Hijri date update
 
-    if (!dailyVerseContainer) return;
-
-    const hour = new Date().getHours();
-    let ayahId = 1;
-
-    // Smart pick based on time
-    if (hour >= 5 && hour < 12) {
-        // Morning (Focus on Morning/Light/Provision)
-        const morningAyahs = [262, 319, 6080, 6084, 1, 26]; // 2:255, 3:26, 93:1, etc.
-        ayahId = morningAyahs[Math.floor(Math.random() * morningAyahs.length)];
-    } else if (hour >= 18 || hour < 5) {
-        // Night (Focus on Protection/Peace/Sleep)
-        const nightAyahs = [5242, 3519, 4067, 285, 286, 6220]; // 67:1, 32:16, 2:285, etc.
-        ayahId = nightAyahs[Math.floor(Math.random() * nightAyahs.length)];
-    } else {
-        // Default (Daytime)
-        const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24));
-        ayahId = (dayOfYear * 7 + 100) % 6236 + 1;
-    }
-
-    try {
-        const response = await fetch(`https://api.alquran.cloud/v1/ayah/${ayahId}/ar.alafasy`);
-        const data = await response.json();
-
-        if (data.status === 'OK') {
-            const ayah = data.data;
-            dailyVerseText.textContent = ayah.text;
-            dailyVerseSource.textContent = `سورة ${ayah.surah.name} - آية ${ayah.numberInSurah}`;
-            dailyVerseContainer.style.display = 'block';
-
-            // Play Action
-            const playBtn = document.getElementById('playDailyVerseBtn');
-            if (playBtn) {
-                playBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    const player = document.getElementById('audioPlayer');
-                    if (player) {
-                        player.src = ayah.audio;
-                        player.play();
-                    }
-                };
-            }
-
-            // Tafsir Action
-            const tafsirBtn = document.getElementById('tafsirDailyVerseBtn');
-            if (tafsirBtn) {
-                tafsirBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    if (typeof openTafsir === 'function') {
-                        openTafsir(ayah.surah.number, ayah.numberInSurah);
-                    }
-                };
-            }
-
-            // Copy Action
-            const copyBtn = document.getElementById('copyDailyVerseBtn');
-            if (copyBtn) {
-                copyBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    const textToCopy = `${ayah.text}\n[${ayah.surah.name}:${ayah.numberInSurah}]`;
-                    navigator.clipboard.writeText(textToCopy).then(() => {
-                        alert('تم نسخ الآية الكريمة');
-                    });
-                };
-            }
-
-            // Update Hijri Date
-            const now = new Date();
-            fetch(`https://api.aladhan.com/v1/gToH/${now.getDate()}-${now.getMonth() + 1}-${now.getFullYear()}`)
-                .then(r => r.json())
-                .then(hijriData => {
-                    if (hijriData.status === 'OK') {
-                        const h = hijriData.data.hijri;
-                        if (dailyDateHijri) dailyDateHijri.textContent = `${h.day} ${h.month.ar} ${h.year}`;
-                    }
-                });
-        }
-    } catch (err) {
-        console.error("Failed to load daily verse", err);
-    }
-}
 
 // Collective Khatmah Logic Removed (Cleaned Up)
 

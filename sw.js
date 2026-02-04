@@ -38,21 +38,29 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch Event: Cache-First Strategy
+// Fetch Event: Cache-First Strategy with Range Request Support for Audio
 self.addEventListener('fetch', (event) => {
+  const isMedia = event.request.url.includes('.mp3') || event.request.url.includes('.mp4');
+
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      // If found in cache, return it immediately
-      if (cachedResponse) return cachedResponse;
+      // If found in cache
+      if (cachedResponse) {
+        // Range Request Handling for Audio (Crucial for seeking and iOS/Chrome offline playback)
+        if (isMedia && event.request.headers.get('range')) {
+          return handleRangeRequest(event.request, cachedResponse);
+        }
+        return cachedResponse;
+      }
 
       // Otherwise fetch from network
       return fetch(event.request).then((networkResponse) => {
-        // Validation check
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic' && !event.request.url.includes('http')) {
+        // Validation: Allow 200 (OK) and 0 (Opaque/CORS) responses for caching
+        const status = networkResponse.status;
+        if (!networkResponse || (status !== 200 && status !== 0)) {
           return networkResponse;
         }
 
-        const isMedia = event.request.url.includes('.mp3') || event.request.url.includes('.mp4');
         const isDataApi = event.request.url.includes('cdn.jsdelivr.net') || event.request.url.includes('.json');
         const responseToCache = networkResponse.clone();
 
@@ -64,12 +72,31 @@ self.addEventListener('fetch', (event) => {
 
         return networkResponse;
       }).catch(err => {
-        // If both fail, we can return an offline page here if we had one
         console.error("Fetch failed", err);
       });
     })
   );
 });
+
+// Helper for Range Requests (Media Seeking)
+async function handleRangeRequest(request, cachedResponse) {
+  const rangeHeader = request.headers.get('range');
+  const buffer = await cachedResponse.arrayBuffer();
+  const bytes = rangeHeader.replace(/bytes=/, "").split("-");
+  const start = parseInt(bytes[0], 10);
+  const end = bytes[1] ? parseInt(bytes[1], 10) : buffer.byteLength - 1;
+
+  const slicedBuffer = buffer.slice(start, end + 1);
+  return new Response(slicedBuffer, {
+    status: 206,
+    statusText: 'Partial Content',
+    headers: {
+      ...cachedResponse.headers,
+      'Content-Range': `bytes ${start}-${end}/${buffer.byteLength}`,
+      'Content-Length': slicedBuffer.byteLength,
+    }
+  });
+}
 
 // Handle messages from the main thread
 self.addEventListener('message', (event) => {

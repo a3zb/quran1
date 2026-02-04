@@ -262,8 +262,49 @@ function displayPrayerTimes(times) {
 function startCountdown() {
     if (countdownInterval) clearInterval(countdownInterval);
 
+    // Initial run
     updateNextPrayer();
+
+    // Standard interval
     countdownInterval = setInterval(updateNextPrayer, 1000);
+
+    // --- PRO HACK: Background Watchdog ---
+    // This keeps the JS thread alive on many Android devices by mimicking a media session
+    startSilentGuard();
+}
+
+let silentGuardAudio = null;
+function startSilentGuard() {
+    if (silentGuardAudio) return;
+
+    // Tiny silent base64 mp3 (0.1s of silence)
+    const silentSrc = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+
+    silentGuardAudio = new Audio(silentSrc);
+    silentGuardAudio.loop = true;
+
+    // Logic: Play when app goes to background to keep process alive
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            silentGuardAudio.play().catch(() => {
+                console.log("Silent guard blocked by browser. User needs to interact first.");
+            });
+        }
+    });
+
+    // Also try to request Wake Lock if supported
+    if ('wakeLock' in navigator) {
+        let wakeLock = null;
+        const requestWakeLock = async () => {
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+            } catch (err) { }
+        };
+        document.addEventListener('visibilitychange', () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') requestWakeLock();
+        });
+        requestWakeLock();
+    }
 }
 
 function updateNextPrayer() {
@@ -310,9 +351,20 @@ function updateNextPrayer() {
 
     document.getElementById('prayerCountdown').innerText = `متبقي ${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 
-    // Check for Adhan Time (exactly zero)
-    if (h === 0 && m === 0 && s === 3) { // 3 seconds buffer
+    // Check for Adhan Time (with a wider window for background reliability)
+    const adhanKey = `adhan_played_${next.name}_${now.toDateString()}`;
+    // Increase detection window to 10 seconds for deep sleep wakeups
+    if (diff <= 10000 && diff > 0 && !localStorage.getItem(adhanKey)) {
+        localStorage.setItem(adhanKey, 'true');
+        console.log(`Triggering Adhan for ${next.name}`);
         playAdhan(next.name);
+    }
+
+    // Clear old adhan keys at midnight
+    if (now.getHours() === 0 && now.getMinutes() === 0 && now.getSeconds() < 2) {
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('adhan_played_')) localStorage.removeItem(key);
+        });
     }
 }
 
@@ -341,10 +393,18 @@ async function requestNotificationPermission() {
         console.warn("هذا المتصفح لا يدعم التنبيهات");
         return false;
     }
-    if (Notification.permission === "granted") return true;
+
+    // Force a visual feedback if already denied
+    if (Notification.permission === "denied") {
+        alert("تنبيه: لقد قمت بحظر الإشعارات مسبقاً. لكي يعمل الأذان، يرجى تفعيل الإشعارات من إعدادات المتصفح/الهاتف.");
+        return false;
+    }
+
     try {
         const permission = await Notification.requestPermission();
-        return permission === "granted";
+        if (permission === "granted") {
+            return true;
+        }
     } catch (e) {
         console.error("Error requesting permission", e);
     }
@@ -355,22 +415,33 @@ function showNotificationSystem(title, options = {}) {
     const defaultOptions = {
         icon: 'favicon.png',
         badge: 'favicon.png',
-        vibrate: [200, 100, 200],
+        vibrate: [500, 110, 500, 110, 450, 110, 200, 110, 170, 40, 450, 110, 200, 110, 170, 40],
+        tag: options.tag || 'adhan-notification',
+        renotify: true,
+        requireInteraction: true,
+        sticky: true, // For Android: keeps notification until dismissed
+        priority: 'max', // Legacy
+        importance: 'max', // For modern Android
+        silent: false, // Ensure it's not silent
+        dir: 'rtl',
         ...options
     };
 
-    // Try via Service Worker (Best for PWA)
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({
-            action: 'show-notification',
-            title: title,
-            options: defaultOptions
+    // Use ServiceWorkerRegistration for better background reliability
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(registration => {
+            // Check for Notification Triggers support (if we want to schedule ahead)
+            if (options.scheduleAt && 'showTrigger' in Notification.prototype) {
+                defaultOptions.showTrigger = new TimestampTrigger(options.scheduleAt);
+            }
+            registration.showNotification(title, defaultOptions);
+        }).catch(err => {
+            console.error("SW Notification failed", err);
+            // Final fallback
+            if (Notification.permission === "granted") new Notification(title, defaultOptions);
         });
-    } else {
-        // Fallback to legacy Notification API
-        if (Notification.permission === "granted") {
-            new Notification(title, defaultOptions);
-        }
+    } else if (Notification.permission === "granted") {
+        new Notification(title, defaultOptions);
     }
 }
 

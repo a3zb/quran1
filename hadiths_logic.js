@@ -165,6 +165,10 @@ function applyHadithFilters() {
             if (currentGradeFilter === 'daif' && !gLower.includes('daif')) return false;
         }
 
+        // 4. Content safety: Skip hadiths with no text
+        const content = h.hadith || h.text || "";
+        if (!content.trim()) return false;
+
         return true;
     });
 
@@ -242,9 +246,14 @@ async function loadHadiths(bookKey) {
         currentChapterRange = null;
         // currentGradeFilter stays as user selected? Or reset? Usually user expects it to stay.
 
-        applyHadithFilters();
+        const total = allHadiths.length;
+        const bookName = HADITH_NAMES[bookKey];
+        // Remove existing badge if any
+        const existingBadge = document.getElementById('hadithCountBadge');
+        if (existingBadge) existingBadge.remove();
+        hadithList.insertAdjacentHTML('beforebegin', `<div id="hadithCountBadge" style="text-align: center; font-size: 0.8rem; color: rgba(255,255,255,0.4); margin-bottom: 15px;">تم تحميل ${total} حديث من ${bookName}</div>`);
 
-        // Chapters handling for Bukhari and Muslim
+        // Update Chapters UI
         if (bookKey === 'bukhari' && window.BUKHARI_CHAPTERS) {
             renderChapters(window.BUKHARI_CHAPTERS);
             chaptersSection.style.display = 'block';
@@ -265,7 +274,7 @@ async function loadHadiths(bookKey) {
             chaptersSection.style.display = 'block';
         }
 
-        renderHadiths(filteredHadiths);
+        applyHadithFilters();
     } catch (error) {
         hadithList.innerHTML = `<div class="error-msg"><p>حدث خطأ أثناء تحميل الأحاديث.</p></div>`;
     }

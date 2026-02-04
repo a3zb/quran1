@@ -11,13 +11,13 @@
             // تجاهل أخطاء الإضافات
             if (url && url.includes('extension')) return;
 
-            // عرض الخطأ للمستخدم
-            alert("⚠️ خطأ برمجي:\n" + msg + "\n\nFile: " + url.split('/').pop() + ":" + line);
+            // سجل الخطأ في الكونسول بدلاً من التنبيه المزعج
+            console.error("⚠️ خطأ برمجي:", msg, "File:", url, "Line:", line);
             return false;
         };
-        // Catch Promise errors (like Firebase failures)
+        // Catch Promise errors (Quietly)
         window.addEventListener('unhandledrejection', function (event) {
-            alert("⚠️ خطأ في الاتصال (Promise):\n" + event.reason);
+            console.warn("⚠️ خطأ في الاتصال (Promise):", event.reason);
         });
     </script>
     <link rel="icon" type="image/png" href="favicon.png">
@@ -191,11 +191,6 @@
             <ul id="songList" class="song-list">
                 <li class="loading-songs">Listen Quran...</li>
             </ul>
-            <!-- Dua al-Khatmah Button -->
-            <button id="duaKhatmahBtn" class="dua-btn">
-                <i class="fas fa-hands-praying"></i>
-                <span>دعاء ختم القرآن الكريم</span>
-            </button>
         </main>
     </div>
 
@@ -235,9 +230,12 @@
                 </button>
             </div>
 
-            <div class="settings-group">
+            <div class="settings-group" style="text-align: center;">
                 <h3>تطبيق القرآن الكريم</h3>
-                <p style="opacity: 0.7; font-size: 0.9rem; text-align: center;">إصدار 2.0 - جميع الحقوق محفوظة</p>
+                <p style="opacity: 0.8; font-size: 0.95rem; margin-bottom: 5px;">إصدار 2.0 - جميع الحقوق محفوظة</p>
+                <p style="color: #a855f7; font-weight: bold; margin-bottom: 15px;">لا تنسونا من صالح دعائكم</p>
+                <p style="opacity: 0.6; font-size: 0.8rem; line-height: 1.5;">أي شخص يملك فكرة لتطوير الموقع يتواصل معنا
+                    عبر إحدى منصاتنا</p>
             </div>
         </div>
     </div>
@@ -443,7 +441,7 @@
                 </div>
             </header>
 
-            <div class="search-container" style="margin: 10px 20px;">
+            <div class="search-container">
                 <div class="search-input-group">
                     <input type="text" id="readingSearchInput" class="simple-input" placeholder="ابحث عن سورة...">
                     <button class="search-btn"><i class="fas fa-search"></i></button>
@@ -451,9 +449,19 @@
             </div>
 
             <div class="surah-list-container">
-                <ul id="readingSurahList" class="song-list" style="padding-bottom: 80px;">
+                <ul id="readingSurahList" class="song-list">
                     <!-- Surah items will be injected here by JS -->
                 </ul>
+
+                <!-- Centered Dua al-Khatmah Box at the Bottom -->
+                <div class="dua-footer-wrapper">
+                    <div id="duaKhatmahBtnStatic" class="manual-style-li" onclick="openDuaReading()">
+                        <div class="song-info-list text-center">
+                            <h3 style="font-size: 1.1rem; font-weight: bold; margin-bottom: 2px;">دعاء ختم القرآن</h3>
+                            <p style="font-size: 0.7rem; opacity: 0.7;">قراءة مكتوبة</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -587,6 +595,16 @@
 
             <!-- Adhkar Details View (Hidden by default) -->
             <div id="adhkarDetails" class="adhkar-details-view" style="display: none;">
+                <!-- New Sticky Progress Bar -->
+                <div id="adhkarProgressContainer" class="adhkar-progress-sticky">
+                    <div class="adhkar-progress-info">
+                        <span id="adhkarProgressPercent">0%</span>
+                        <span id="adhkarProgressStatus">اكتمل 0 من 0</span>
+                    </div>
+                    <div class="adhkar-progress-bar-bg">
+                        <div id="adhkarProgressBar" class="adhkar-progress-bar-fill" style="width: 0%"></div>
+                    </div>
+                </div>
                 <div id="adhkarList" class="adhkar-list">
                     <!-- Dynamic Content -->
                 </div>
@@ -1007,63 +1025,73 @@
 
                 <div class="help-grid">
                     <div class="help-item">
-                        <i class="fas fa-search"></i>
+                        <i class="fas fa-wand-magic-sparkles"></i>
                         <div>
-                            <strong>البحث الذكي</strong>
-                            <p>ابحث عن السور، القراء، أو حتى آيات محددة بسهولة تامة.</p>
+                            <strong>المساعد الذكي</strong>
+                            <p>مرشدك الشخصي الذي يقدم لك نصائح نبوية وأذكاراً وسنناً مهجورة بناءً على وقتك ونشاطك داخل
+                                التطبيق.</p>
                         </div>
                     </div>
 
                     <div class="help-item">
-                        <i class="fas fa-headphones-simple"></i>
+                        <i class="fas fa-book-quran"></i>
                         <div>
-                            <strong>استماع وقراءة</strong>
-                            <p>استمتع بتلاوات خاشعة لنخبة من القراء مع عرض الآيات بتصميم مريح.</p>
+                            <strong>خطة الختمة</strong>
+                            <p>حدد المدة التي تود ختم القرآن فيها، وسيقوم التطبيق بحساب وردك اليومي ومتابعة تقدمك بدقة.
+                            </p>
                         </div>
                     </div>
 
                     <div class="help-item">
-                        <i class="fas fa-book-open"></i>
+                        <i class="fas fa-quote-right"></i>
                         <div>
-                            <strong>التفسير الفوري</strong>
-                            <p>اضغط على أي آية أثناء القراءة لعرض تفسيرها وخيارات التفاعل معها.</p>
+                            <strong>موسوعة الأحاديث</strong>
+                            <p>تصفح كتب السنة السبعة مع ميزة البحث الذكي والفلترة حسب صحة الحديث (صحيح، حسن، ضعيف).</p>
                         </div>
                     </div>
 
                     <div class="help-item">
-                        <i class="fas fa-heart"></i>
+                        <i class="fas fa-cloud-arrow-down"></i>
                         <div>
-                            <strong>المفضلة والإشارات</strong>
-                            <p>احفظ السور والآيات التي تلامس قلبك للعودة إليها في أي وقت.</p>
+                            <strong>الاستخدام بدون إنترنت</strong>
+                            <p>يمكنك تحميل المصحف كاملاً مع الخلفيات والأحاديث والتفاسير ليعمل التطبيق كلياً بدون
+                                إنترنت.</p>
                         </div>
                     </div>
 
                     <div class="help-item">
-                        <i class="fas fa-moon"></i>
+                        <i class="fas fa-clock"></i>
                         <div>
-                            <strong>ميزات الراحة</strong>
-                            <p>استخدم الوضع الليلي ومؤقت النوم لتجربة هادئة قبل النوم.</p>
+                            <strong>الأذان والقبلة</strong>
+                            <p>تنبيهات دقيقة لمواقيت الصلاة مع نظام "الحارس الصامت" لضمان الأذان في الخلفية، وتحديد
+                                القبلة بالبوصلة.</p>
                         </div>
                     </div>
 
                     <div class="help-item">
                         <i class="fas fa-hands-praying"></i>
                         <div>
-                            <strong>دعواتكم لنا</strong>
-                            <p>لا تنسونا من صالح دعائكم، ولأهلنا في غزة بالنصر والتمكين.</p>
+                            <strong>الأذكار والتحصين</strong>
+                            <p>مكتبة شاملة للأذكار مع عدادات تفاعلية ونظام مكافآت لتحفيزك على المداومة اليومية.</p>
                         </div>
                     </div>
 
                     <div class="help-item">
-                        <i class="fas fa-compass"></i>
+                        <i class="fas fa-headphones-simple"></i>
                         <div>
-                            <strong>القبلة والأذان</strong>
-                            <p>تحديد اتجاه القبلة بدقة ومعرفة مواقيت الصلاة لموقعك.</p>
+                            <strong>تلاوات خاشعة</strong>
+                            <p>استمع لأشهر القراء مع خلفيات فيديو سينمائية متحركة تزيد من خشوعك أثناء الاستماع والقراءة.
+                            </p>
                         </div>
                     </div>
 
-
-
+                    <div class="help-item">
+                        <i class="fas fa-circle-check"></i>
+                        <div>
+                            <strong>التفسير والتدبر</strong>
+                            <p>فسر أي آية بضغطة واحدة، واستكشف كنوز القرآن من خلال واجهة قراءة مريحة للعين.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
