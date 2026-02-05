@@ -151,7 +151,8 @@ function applyHadithFilters() {
 
         // 2. Chapter range filter
         if (currentChapterRange) {
-            const num = parseInt(h.hadithnumber);
+            const numStr = h.hadithnumber || h.hadithNumber || h.number;
+            const num = parseInt(numStr);
             if (num < currentChapterRange.start || num > currentChapterRange.end) return false;
         }
 
@@ -201,82 +202,56 @@ async function loadHadiths(bookKey) {
         const bookInfo = HADITH_BOOKS[bookKey];
         let fetchedData = null;
 
-        // For Sunan books, prefer REMOTE to get grades (since local txt lacks them)
-        const isSunan = ['abudawud', 'tirmidhi', 'nasai', 'ibnmajah'].includes(bookKey);
-
-        if (isSunan) {
-            try {
-                const response = await fetch(bookInfo.remote);
-                if (response.ok) {
-                    const data = await response.json();
-                    fetchedData = data.hadiths || [];
-                }
-            } catch (e) {
-                console.warn(`Remote fetch failed for ${bookKey}, falling back to local`);
+        // Try local cache/file first for all books (if original folder exists, though it might not)
+        try {
+            const localResp = await fetch(`originals/${bookInfo.local}`);
+            if (localResp.ok) {
+                const text = await localResp.text();
+                fetchedData = parseHadithTxt(text);
             }
-        }
+        } catch (e) { /* ignore and move to remote */ }
 
-        // If not Sunan (Bukhari/Muslim/Nawawi) or remote failed, try local
-        if (!fetchedData && bookInfo.local) {
-            try {
-                const response = await fetch(`originals/${bookInfo.local}`);
-                if (response.ok) {
-                    const text = await response.text();
-                    fetchedData = parseHadithTxt(text);
-                }
-            } catch (e) {
-                console.warn(`Local fetch failed for ${bookKey}`);
-            }
-        }
-
-        // Final fallback to remote if not already tried or failed
+        // If no local data, fetch from remote
         if (!fetchedData) {
             const response = await fetch(bookInfo.remote);
             if (response.ok) {
                 const data = await response.json();
-                fetchedData = data.hadiths || [];
-            } else {
-                throw new Error("Failed sources");
+                // API can return { hadiths: [...] } or { data: [...] } or just [...]
+                fetchedData = data.hadiths || data.data || (Array.isArray(data) ? data : null);
             }
         }
 
-        allHadiths = fetchedData;
+        if (!fetchedData) throw new Error("No data found");
 
-        // Reset local filters
+        allHadiths = fetchedData;
         currentChapterRange = null;
-        // currentGradeFilter stays as user selected? Or reset? Usually user expects it to stay.
 
         const total = allHadiths.length;
         const bookName = HADITH_NAMES[bookKey];
-        // Remove existing badge if any
+
         const existingBadge = document.getElementById('hadithCountBadge');
         if (existingBadge) existingBadge.remove();
         hadithList.insertAdjacentHTML('beforebegin', `<div id="hadithCountBadge" style="text-align: center; font-size: 0.8rem; color: rgba(255,255,255,0.4); margin-bottom: 15px;">تم تحميل ${total} حديث من ${bookName}</div>`);
 
         // Update Chapters UI
-        if (bookKey === 'bukhari' && window.BUKHARI_CHAPTERS) {
-            renderChapters(window.BUKHARI_CHAPTERS);
-            chaptersSection.style.display = 'block';
-        } else if (bookKey === 'muslim' && window.MUSLIM_CHAPTERS) {
-            renderChapters(window.MUSLIM_CHAPTERS);
-            chaptersSection.style.display = 'block';
-        } else if (bookKey === 'abudawud' && window.ABUDAWUD_CHAPTERS) {
-            renderChapters(window.ABUDAWUD_CHAPTERS);
-            chaptersSection.style.display = 'block';
-        } else if (bookKey === 'tirmidhi' && window.TIRMIDHI_CHAPTERS) {
-            renderChapters(window.TIRMIDHI_CHAPTERS);
-            chaptersSection.style.display = 'block';
-        } else if (bookKey === 'nasai' && window.NASAI_CHAPTERS) {
-            renderChapters(window.NASAI_CHAPTERS);
-            chaptersSection.style.display = 'block';
-        } else if (bookKey === 'ibnmajah' && window.IBNAJAH_CHAPTERS) {
-            renderChapters(window.IBNAJAH_CHAPTERS);
+        const chaptersMap = {
+            bukhari: window.BUKHARI_CHAPTERS,
+            muslim: window.MUSLIM_CHAPTERS,
+            abudawud: window.ABUDAWUD_CHAPTERS,
+            tirmidhi: window.TIRMIDHI_CHAPTERS,
+            nasai: window.NASAI_CHAPTERS,
+            ibnmajah: window.IBNMAJAH_CHAPTERS
+        };
+
+        if (chaptersMap[bookKey]) {
+            renderChapters(chaptersMap[bookKey]);
             chaptersSection.style.display = 'block';
         }
 
         applyHadithFilters();
     } catch (error) {
-        hadithList.innerHTML = `<div class="error-msg"><p>حدث خطأ أثناء تحميل الأحاديث.</p></div>`;
+        console.error("Hadith loading error:", error);
+        hadithList.innerHTML = `<div class="error-msg"><p>حدث خطأ أثناء تحميل الأحاديث. يرجى التأكد من الاتصال بالإنترنت.</p></div>`;
     }
 }
 
@@ -429,12 +404,13 @@ function showHadithPage() {
 // --- Authenticity Helpers ---
 
 function getHadithGrade(item) {
-    if (item.grades && item.grades.length > 0) {
-        const albani = item.grades.find(g => g.name.toLowerCase().includes("albani"));
+    if (item.grades && Array.isArray(item.grades) && item.grades.length > 0) {
+        const albani = item.grades.find(g => g.name && g.name.toLowerCase().includes("albani"));
         if (albani) return albani.grade;
         return item.grades[0].grade;
     }
-    if (currentHadithBook === 'bukhari' || currentHadithBook === 'muslim') return 'Sahih';
+    if (item.grade) return item.grade;
+    if (currentHadithBook === 'bukhari' || currentHadithBook === 'muslim' || currentHadithBook === 'nawawi') return 'Sahih';
     return null;
 }
 

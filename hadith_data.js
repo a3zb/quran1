@@ -312,7 +312,7 @@ const NASAI_CHAPTERS = [
     { id: 52, name: "كتاب الأشربة", range: [5540, 5758] }
 ];
 
-const IBNAJAH_CHAPTERS = [
+const IBNMAJAH_CHAPTERS = [
     { id: 0, name: "كتاب المقدمة", range: [1, 266] },
     { id: 1, name: "كتاب الطهارة وسننها", range: [267, 666] },
     { id: 2, name: "كتاب الصلاة", range: [667, 705] },
@@ -358,4 +358,4 @@ window.MUSLIM_CHAPTERS = MUSLIM_CHAPTERS;
 window.ABUDAWUD_CHAPTERS = ABUDAWUD_CHAPTERS;
 window.TIRMIDHI_CHAPTERS = TIRMIDHI_CHAPTERS;
 window.NASAI_CHAPTERS = NASAI_CHAPTERS;
-window.IBNAJAH_CHAPTERS = IBNAJAH_CHAPTERS;
+window.IBNMAJAH_CHAPTERS = IBNMAJAH_CHAPTERS;

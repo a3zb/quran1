@@ -598,14 +598,31 @@ if (readingSearchInput) {
             if (regex.test(surah.title)) {
                 results.push({ type: 'surah', data: surah });
             }
+            regex.lastIndex = 0; // Reset for next use
         });
 
-        // 2. Check Verse Contents (Only if term is long enough or no surah matches to keep performance/relevance)
-        if (term.length >= 2) {
+        // 2. Check Verse Contents
+        // Optimization: If term is clearly a verse (long or multiple words), search verses thoroughly
+        const isLikelyVerse = term.length > 4 || term.includes(' ');
+        const normalizedTerm = normalizeArabic(term);
+
+        if (isLikelyVerse || results.length === 0) {
             songs.forEach(surah => {
                 if (surah.lyrics) {
                     surah.lyrics.forEach((verse, idx) => {
+                        // Double check: Regex OR Normalized Comparison
+                        let isMatch = false;
                         if (regex.test(verse.text)) {
+                            isMatch = true;
+                        } else {
+                            // Fallback for extremely complex mushaf orthography
+                            const normalizedVerse = normalizeArabic(verse.text);
+                            if (normalizedVerse.includes(normalizedTerm)) {
+                                isMatch = true;
+                            }
+                        }
+
+                        if (isMatch) {
                             results.push({
                                 type: 'verse',
                                 surah: surah,
@@ -613,6 +630,7 @@ if (readingSearchInput) {
                                 text: verse.text
                             });
                         }
+                        regex.lastIndex = 0;
                     });
                 }
             });
@@ -637,7 +655,7 @@ function renderReadingSearchResults(results, term) {
         return a.type === 'surah' ? -1 : 1;
     });
 
-    results.slice(0, 50).forEach((item, index) => { // Limit to 50 for performance
+    results.slice(0, 80).forEach((item, index) => { // Increased limit for better coverage
         const li = document.createElement('li');
         li.className = item.type === 'verse' ? 'search-verse-item' : '';
 
@@ -645,27 +663,26 @@ function renderReadingSearchResults(results, term) {
             const surah = item.data;
             li.innerHTML = `
                 <div class="song-info-list" style="text-align: right; width: 100%;">
-                    <h3>${surah.title}</h3>
+                    <h3>${highlightText(surah.title, term)}</h3>
                     <p>${surah.lyrics ? surah.lyrics.length : 0} آية</p>
                 </div>
             `;
             li.onclick = () => openReadingSurah(surah);
         } else {
             const surah = item.surah;
-            // Highlight match in preview
-            const safeTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            let highlightedText = item.text.replace(new RegExp(`(${safeTerm})`, 'gi'), '<mark>$1</mark>');
+            // Use the shared highlightText helper for consistency
+            let highlightedText = highlightText(item.text, term);
 
             li.innerHTML = `
                 <div class="song-info-list" style="text-align: right; width: 100%;">
-                    <h3 style="font-size: 0.95rem; color: #a855f7; margin-bottom: 8px;">${surah.title} - آية ${item.verseNum}</h3>
-                    <p class="search-verse-preview" style="font-family: 'Amiri', serif; color: #fff; font-size: 1.2rem; line-height: 1.8;">${highlightedText}</p>
+                    <h3 style="font-size: 0.9rem; color: #a855f7; margin-bottom: 8px; opacity: 0.8;">${surah.title} - آية ${item.verseNum}</h3>
+                    <p class="search-verse-preview" style="font-family: 'Amiri', serif; color: #fff; font-size: 1.15rem; line-height: 1.8;">${highlightedText}</p>
                 </div>
             `;
             li.onclick = () => openReadingSurah(surah, item.verseNum);
         }
 
-        li.style.animationDelay = `${index * 0.05}s`;
+        li.style.animationDelay = `${index * 0.03}s`;
         readingSurahListElement.appendChild(li);
     });
 }
@@ -1001,26 +1018,46 @@ function renderSongList(filteredSongs = songs, searchTerm = '', searchType = 'al
     });
 }
 
-// Build a regex that matches a term regardless of Arabic diacritics (tashkeel)
-// It inserts an optional diacritics class between each character.
-// Arabic diacritics range: \u064B-\u0652 and \u0670 (alif khanjariya)
+// Comprehensive helper to normalize Arabic text for searching and comparison
+function normalizeArabic(text) {
+    if (!text) return "";
+    return text
+        .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g, "") // Remove ALL Quranic marks/diacritics
+        .replace(/[أإآٱ]/g, "ا")
+        .replace(/ة/g, "ه")
+        .replace(/[ىي]/g, "ي") // Normalize Yah/Maksura
+        .replace(/\s+/g, " ")
+        .toLowerCase()
+        .trim();
+}
+
+// Build a robust regex that matches simplified terms against complex Quranic text
 function buildArabicDiacriticInsensitiveRegex(term) {
     if (!term) return null;
-    // Escape regex special chars
-    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Insert optional diacritics class between every token char
-    const diacs = "[\u064B-\u0652\u0670]*";
-    const pattern = escaped
-        // Allow whitespace variations
+
+    // Normalize term first to ensure we build regex from base characters
+    const cleanTerm = normalizeArabic(term);
+    if (!cleanTerm) return null;
+
+    const escaped = cleanTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // All possible Quranic marks that can appear between letters
+    const diacs = "[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]*";
+
+    let pattern = escaped
         .replace(/\s+/g, "\\s+")
-        // Insert optional diacritics after each char
         .split("")
-        .map(ch => `${ch}${diacs}`)
+        .map(ch => {
+            if (/[اأإآٱ]/.test(ch)) return `[اأإآٱ]${diacs}`;
+            if (/[هه]/.test(ch)) return `[ةه]${diacs}`;
+            if (/[يى]/.test(ch)) return `[يى]${diacs}`;
+            if (/[و]/.test(ch)) return `[وۥ]${diacs}`; // Handle standard and small Waw
+            return `${ch}${diacs}`;
+        })
         .join("");
     try {
         return new RegExp(`(${pattern})`, 'giu');
     } catch (e) {
-        // Fallback to simple, safe regex
         return new RegExp(`(${escaped})`, 'giu');
     }
 }
@@ -1076,7 +1113,8 @@ function filterSongs(searchTerm, searchType = 'all') {
         return songs;
     }
     const regex = buildArabicDiacriticInsensitiveRegex(searchTerm);
-    if (!regex) return songs;
+    const normalizedTerm = normalizeArabic(searchTerm);
+    if (!regex && !normalizedTerm) return songs;
 
     return songs
         .map(song => {
@@ -1085,18 +1123,18 @@ function filterSongs(searchTerm, searchType = 'all') {
 
             // Title (surah) matching
             if (searchType === 'all' || searchType === 'surah') {
-                if (song.title && regex.test(song.title)) {
+                if (song.title && (regex && regex.test(song.title) || normalizeArabic(song.title).includes(normalizedTerm))) {
                     matches = true;
                 }
-                regex.lastIndex = 0;
+                if (regex) regex.lastIndex = 0;
             }
 
             // Reader (artist) matching
             if (searchType === 'all' || searchType === 'reader') {
-                if (song.artist && regex.test(song.artist)) {
+                if (song.artist && (regex && regex.test(song.artist) || normalizeArabic(song.artist).includes(normalizedTerm))) {
                     matches = true;
                 }
-                regex.lastIndex = 0;
+                if (regex) regex.lastIndex = 0;
             }
 
             // Verse matching
@@ -1104,15 +1142,22 @@ function filterSongs(searchTerm, searchType = 'all') {
                 if (Array.isArray(song.lyrics)) {
                     const matchingLyrics = song.lyrics.filter(l => {
                         if (!l || !l.text) return false;
-                        const ok = regex.test(l.text);
-                        regex.lastIndex = 0;
+                        let ok = false;
+                        if (regex && regex.test(l.text)) {
+                            ok = true;
+                        } else {
+                            const normalizedVerse = normalizeArabic(l.text);
+                            if (normalizedVerse.includes(normalizedTerm)) {
+                                ok = true;
+                            }
+                        }
+                        if (regex) regex.lastIndex = 0;
                         return ok;
                     });
+
                     if (matchingLyrics.length > 0) {
-                        if (searchType === 'verse') {
-                            songCopy.hasMatchingVerses = true;
-                            songCopy.matchingVerses = matchingLyrics.slice();
-                        }
+                        songCopy.hasMatchingVerses = true;
+                        songCopy.matchingVerses = matchingLyrics.slice();
                         matches = true;
                     }
                 }
